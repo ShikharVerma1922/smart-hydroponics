@@ -1,0 +1,35 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: hydro_mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  postgres-db:
+    image: postgres:15
+    container_name: hydro_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: hydroponics_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  timeseries-db:
+    image: influxdb:2.7
+    container_name: hydro_influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdata:/var/lib/influxdb2
+
+volumes:
+  pgdata:
+  influxdata:
