@@ -5,15 +5,23 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon run src/server.js",
-    "start": "node run src/server.js"
+    "start": "node run src/server.js",
+    "postinstall": "prisma skills sync || exit 0"
   },
   "type": "module",
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@influxdata/influxdb-client": "^1.35.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mqtt": "^5.15.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "prisma": "7.10.0"
   }
 }

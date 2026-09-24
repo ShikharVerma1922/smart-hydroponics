@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DosingSource {
+  AUTONOMOUS_EC // Routine low EC correction
+  AUTONOMOUS_PH // Routine high pH drift correction
+  ML_BIASED // Visual nutrient deficiency boost (N, P, K, Ca, etc.)
+  MANUAL_OVERRIDE // Triggered by user from dashboard
+}
+
+enum PumpType {
+  PH_DOWN // Pump 1
+  NUTRIENT_A // Pump 2 (Calcium, Nitrate, Chelated Iron)
+  NUTRIENT_B // Pump 3 (NPK, Magnesium, Micronutrients)
+}
+
+enum SeverityLevel {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum AlertType {
+  ACIDIC_CRASH // pH < 5.5
+  OSMOTIC_TOXICITY // EC > 2.4 mS/cm
+  LOW_WATER_LEVEL // Tank level < 15%
+  BIOTIC_STRESS // Pests/pathogens detected by ML
+  DESYNC_WARNING // ML flags deficiency but EC is already high
+}
+
+model CropRecipe {
+  id            String   @id @default(uuid())
+  cropName      String   @unique // e.g., "Lettuce", "Spinach", "Tomato"
+  targetPhMin   Float    @default(5.8)
+  targetPhMax   Float    @default(6.5)
+  targetEcMin   Float    @default(1.2) // in mS/cm
+  targetEcMax   Float    @default(1.8) // in mS/cm
+  ecCeiling     Float    @default(2.4) // Upper safety boundary
+  minWaterLevel Float    @default(15.0) // Percentage
+  isActive      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model DiagnosticReport {
+  id                 String        @id @default(uuid())
+  deviceId           String        @default("esp32_node_01")
+  timestamp          DateTime      @default(now())
+  imageUrl           String // e.g., "/uploads/canopy-1724486400.jpg"
+  primaryLabel       String // e.g., "NITROGEN_DEFICIENCY", "HEALTHY"
+  confidence         Float // e.g., 0.89 (89%)
+  severity           SeverityLevel @default(MODERATE)
+  classProbabilities Json // Raw JSON map: { "HEALTHY": 0.04, "NITROGEN_DEFICIENCY": 0.89, ... }
+  actionTaken        String? // e.g., "Biased A/B dose dispatched: 4000ms / 2000ms"
+  cooldownActiveTill DateTime? // 48-hour visual lockout timestamp
+  dosingEvents       DosingLog[]
+
+  @@index([deviceId, timestamp])
+}
+
+model DosingLog {
+  id                 String            @id @default(uuid())
+  timestamp          DateTime          @default(now())
+  source             DosingSource
+  pumpType           PumpType
+  durationMs         Int // Millisecond pulse length
+  rationale          String // Explanation: "N-deficiency boost based on ML confidence 0.89"
+  mixingLockoutMin   Int               @default(10)
+  diagnosticReportId String?
+  diagnosticReport   DiagnosticReport? @relation(fields: [diagnosticReportId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@index([pumpType])
+}
+
+model SystemAlert {
+  id         String        @id @default(uuid())
+  timestamp  DateTime      @default(now())
+  alertType  AlertType
+  severity   SeverityLevel @default(CRITICAL)
+  message    String // e.g., "Acidic crash detected (pH 5.2). Dosing locked."
+  isResolved Boolean       @default(false)
+  resolvedAt DateTime?
+  resolvedBy String? // "SYSTEM" or "USER"
+
+  @@index([isResolved, timestamp])
+}
