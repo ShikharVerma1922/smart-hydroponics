@@ -1,9 +1,9 @@
 import mqttClient from "../config/mqtt_broker.js";
-import {prisma} from "../config/prisma.js" ;
 import {recordTelemetry} from "../services/telemetry.service.js";
+import { emitTelemetryUpdate } from "../socket.js";
+import {handleIncomingTelemetry} from "../services/dosing.service.js"
 
-const TELEMETRY_TOPIC = 'hydro/system1/telemetry';
-const COMMAND_TOPIC = 'hydro/system1/commands';
+const TELEMETRY_TOPIC = 'hydro/+/telemetry';
 
 // in memory cache
 export let latestTelemetryCache = {
@@ -20,7 +20,7 @@ export const initMQTTHandler = ()=>{
     });
     mqttClient.on('message', async (topic,message)=>{
         try {
-            if(topic == TELEMETRY_TOPIC){
+            if(topic.endsWith('/telemetry')){
                 const data = JSON.parse(message.toString());
                const rawSensors = data.sensors || data;
                 console.log(rawSensors)
@@ -38,6 +38,8 @@ export const initMQTTHandler = ()=>{
                 };
 
                 await recordTelemetry(data);
+                emitTelemetryUpdate(data);
+                await handleIncomingTelemetry(data);
             }
         } catch (error) {
             console.error("  MQTT parsing error",error.message);
@@ -45,23 +47,23 @@ export const initMQTTHandler = ()=>{
     })
 }
 
-export async function dispatchPumpPulse(pumpType, durationMs, source, rationale){
-    const payload = {
-    command: 'RUN_PUMP',
-    pump_type: pumpType,      
-    duration_ms: durationMs,
-  };
+// export async function dispatchPumpPulse(pumpType, durationMs, source, rationale){
+//     const payload = {
+//     command: 'RUN_PUMP',
+//     pump_type: pumpType,      
+//     duration_ms: durationMs,
+//   };
 
-  mqttClient.publish(COMMAND_TOPIC, JSON.stringify(payload));
-  console.log(`[Actuator] Dispatched ${pumpType} for ${durationMs}ms`);
+//   mqttClient.publish(COMMAND_TOPIC, JSON.stringify(payload));
+//   console.log(`[Actuator] Dispatched ${pumpType} for ${durationMs}ms`);
 
-  await prisma.dosingLog.create({
-    data: {
-      source: source,
-      pumpType: pumpType,
-      durationMs: durationMs,
-      rationale: rationale,
-      mixingLockoutMin: 10,
-    },
-  });
-}
+//   await prisma.dosingLog.create({
+//     data: {
+//       source: source,
+//       pumpType: pumpType,
+//       durationMs: durationMs,
+//       rationale: rationale,
+//       mixingLockoutMin: 10,
+//     },
+//   });
+// }

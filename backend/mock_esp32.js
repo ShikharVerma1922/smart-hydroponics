@@ -4,7 +4,7 @@ import { InfluxDB } from '@influxdata/influxdb-client';
 const BROKER_URL = 'mqtt://localhost:1883';
 const TELEMETRY_TOPIC = 'hydro/system1/telemetry';
 
-const influxClient = new InfluxDB({ url: 'http://localhost:8086', token: 'hydro_admin_token' });
+const influxClient = new InfluxDB({ url: 'http://localhost:8086', token: "hydro_admin_token" });
 const queryApi = influxClient.getQueryApi('hydro_org');
 
 const client = mqtt.connect(BROKER_URL);
