@@ -47,7 +47,7 @@ async function main() {
     },
   });
 
-  console.log(`Seeding complete: [\({device.id}] set to active crop [\){lettuce.cropName}].`);
+  console.log(`Seeding complete: [${device.id}] set to active crop [${lettuce.cropName}].`);
 }
 
 main()

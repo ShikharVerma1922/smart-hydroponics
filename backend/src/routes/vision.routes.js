@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `canopy-\({Date.now()}\){ext}`);
+    cb(null, `canopy-${Date.now()}${ext}`);
   },
 });
 

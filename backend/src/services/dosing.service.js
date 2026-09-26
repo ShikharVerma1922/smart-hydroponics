@@ -1,7 +1,7 @@
 // backend/src/services/dosing.service.js
 import { prisma } from '../config/prisma.js';
 import mqttClient from '../config/mqtt_broker.js';
-import { emitDosingEvent, emitSystemAlert } from '../socket.js';
+import { emitDosingEvent, emitSystemAlert, emitSystemLockout } from '../socket.js';
 import { getLatestTelemetry } from './influxQuery.service.js';
 
 // --- Per-Device In-Memory Mixing Cooldown Tracking ---
@@ -28,10 +28,10 @@ async function triggerSystemAlert(deviceId, alertType, severity, message) {
         },
       });
       emitSystemAlert({ deviceId, alertType, severity, message, timestamp: Date.now() });
-      console.warn(`[System Alert Created] [\({deviceId}]\){alertType}: ${message}`);
+      console.warn(`[System Alert Created] [${deviceId}]${alertType}: ${message}`);
     }
   } catch (err) {
-    console.error(`[System Alert DB Error] Failed to persist \({alertType} for\){deviceId}:`, err.message);
+    console.error(`[System Alert DB Error] Failed to persist ${alertType} for${deviceId}:`, err.message);
   }
 }
 
@@ -49,21 +49,13 @@ async function autoResolveAlert(deviceId, alertType) {
       },
     });
   } catch (err) {
-    console.error(`[System Alert Resolve Error] Failed to resolve \({alertType} for\){deviceId}:`, err.message);
+    console.error(`[System Alert Resolve Error] Failed to resolve ${alertType} for${deviceId}:`, err.message);
   }
 }
 
 /**
  * Publishes an MQTT pulse command to the target device's command topic
- * and records the event in PostgreSQL.
- *
- * @param {string} deviceId - Target hardware node ID
- * @param {string} pumpType - 'PH_DOWN' | 'NUTRIENT_A' | 'NUTRIENT_B'
- * @param {number} durationMs - Pulse duration in milliseconds
- * @param {string} source - 'AUTONOMOUS_EC' | 'AUTONOMOUS_PH' | 'ML_BIASED' | 'MANUAL_OVERRIDE'
- * @param {string} rationale - Explanation from the decision matrix
- * @param {string|null} diagnosticReportId - Optional UUID linking to DiagnosticReport
- */
+*/
 async function executePumpPulse(deviceId, pumpType, durationMs, source, rationale, diagnosticReportId = null) {
   const payload = {
     command: 'RUN_PUMP',
@@ -77,9 +69,9 @@ async function executePumpPulse(deviceId, pumpType, durationMs, source, rational
 
   mqttClient.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => {
     if (err) {
-      console.error(`[Actuator MQTT Error] [\({deviceId}] Failed to publish\){pumpType}:`, err.message);
+      console.error(`[Actuator MQTT Error] [${deviceId}] Failed to publish${pumpType}:`, err.message);
     } else {
-      console.log(`[Actuator MQTT] [\({deviceId}] Dispatched ->\){pumpType} for ${durationMs}ms`);
+      console.log(`[Actuator MQTT] [${deviceId}] Dispatched ->${pumpType} for ${durationMs}ms`);
     }
   });
 
@@ -92,21 +84,20 @@ async function executePumpPulse(deviceId, pumpType, durationMs, source, rational
   timestamp: Date.now(),
 });
 
+setDeviceLockout(deviceId, POST_DOSING_LOCKOUT_MS);
+
   // Persist record to PostgreSQL
-  console.log("Data saved in postgresql")
   try {
     return await prisma.dosingLog.create({
-      data: {
-        deviceId,
-        pumpType,
-        durationMs,
-        source,
-        rationale,
-        mixingLockoutMin: 10,
-        ...(diagnosticReportId && {
-          diagnosticReport: { connect: { id: diagnosticReportId } },
-        }),
-      },
+     data: {
+    deviceId,
+    pumpType,
+    durationMs,
+    source,
+    rationale,
+    mixingLockoutMin: 10,
+    diagnosticReportId: diagnosticReportId || null,
+  },
     });
   } catch (dbErr) {
     console.error(`[Dosing Log DB Error] [${deviceId}]:`, dbErr.message);
@@ -136,14 +127,11 @@ async function executeStaggeredNutrientDose(deviceId, durationA, durationB, sour
 
 /**
  * Core Decision Matrix & Multi-Device Safety Evaluation Function.
- *
- * @param {Object} telemetry - { device_id, ph, ec_ms_cm, water_temp_c, water_level_pct }
- * @param {Object|null} mlReport - DiagnosticReport record from PostgreSQL
  */
 export async function evaluateDosingDecision(telemetry, mlReport = null) {
   const now = Date.now();
   const deviceId = telemetry.device_id || 'esp32_node_01';
-  const { ph, ec_ms_cm, water_level_pct } = telemetry;
+  const { ph, ec_ms_cm, water_level_pct } = telemetry.sensors;
 
   // -------------------------------------------------------------------------
   // 1. PRIORITY SAFETY GATES (HARD STOPS & PERSISTENT SYSTEM ALERTS)
@@ -219,15 +207,17 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   // -------------------------------------------------------------------------
   if (ph > targetPhMax) {
     deviceMixingLockouts.set(deviceId, now + POST_DOSING_LOCKOUT_MS);
+    
+    const rationale = ec_ms_cm >= targetEcMin
+      ? 'Nutrients present but locked out by pH. Lower pH only.'
+      : 'Standard closed-loop acid pulse. Hold nutrient salts.';
+
     emitSystemLockout({
         deviceId,
         isActive: true,
         remainingSeconds: 600,
         rationale,
     });
-    const rationale = ec_ms_cm >= targetEcMin
-      ? 'Nutrients present but locked out by pH. Lower pH only.'
-      : 'Standard closed-loop acid pulse. Hold nutrient salts.';
 
     await executePumpPulse(deviceId, 'PH_DOWN', 2500, 'AUTONOMOUS_PH', rationale, mlReport?.id ?? null);
 
@@ -261,12 +251,6 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
       mlReport?.cooldownActiveTill && new Date(mlReport.cooldownActiveTill) > new Date();
 
     deviceMixingLockouts.set(deviceId, now + POST_DOSING_LOCKOUT_MS);
-    emitSystemLockout({
-        deviceId,
-        isActive: true,
-        remainingSeconds: 600,
-        rationale,
-    });
 
     // A. Visual cooldown active OR baseline -> AUTONOMOUS_EC 1:1 Balanced Replenishment
     if (!mlReport || isVisualCooldownActive || primaryLabel === 'HEALTHY') {
@@ -333,6 +317,14 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
         break;
     }
 
+
+     emitSystemLockout({
+        deviceId,
+        isActive: true,
+        remainingSeconds: 600,
+        rationale,
+    });
+
     await executeStaggeredNutrientDose(deviceId, durationA, durationB, 'ML_BIASED', rationale, mlReport.id);
 
     // Apply 48-hour visual lockout timestamp to the active report
@@ -356,7 +348,7 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   // 6. FALSE ALARM / DESYNC (ML flags deficiency, but EC is already optimal)
   // -------------------------------------------------------------------------
   if (mlReport && primaryLabel !== 'HEALTHY' && ec_ms_cm >= targetEcMin) {
-    const msg = `ML diagnosed \({primaryLabel}, but reservoir EC is optimal (\){ec_ms_cm} mS/cm). Nutrients held to prevent burn.`;
+    const msg = `ML diagnosed ${primaryLabel}, but reservoir EC is optimal ${ec_ms_cm} mS/cm). Nutrients held to prevent burn.`;
     await triggerSystemAlert(deviceId, 'DESYNC_WARNING', 'MODERATE', msg);
 
     return {
@@ -405,7 +397,7 @@ export async function handleIncomingDiagnosticReport(diagnosticReport) {
 
   const telemetryPayload = {
     device_id: deviceId,
-    ...latestTelemetry.sensors,
+    ...latestTelemetry,
   };
 
   const result = await evaluateDosingDecision(telemetryPayload, diagnosticReport);
@@ -418,4 +410,15 @@ export async function handleIncomingDiagnosticReport(diagnosticReport) {
   }
 
   return result;
+}
+
+export function getDeviceLockout(deviceId) {
+ if (!deviceId) return 0;
+  return deviceMixingLockouts.get(deviceId) || 0;
+}
+
+export function setDeviceLockout(deviceId, durationMs = POST_DOSING_LOCKOUT_MS) {
+  const activeTill = Date.now() + durationMs;
+  deviceMixingLockouts.set(deviceId, activeTill);
+  return activeTill;
 }

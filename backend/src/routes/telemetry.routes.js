@@ -9,7 +9,8 @@ const router = express.Router();
  */
 router.get('/latest', async (req, res) => {
   try {
-    const data = await getLatestTelemetry();
+    const { deviceId = 'esp32_node_01' } = req.query;
+    const data = await getLatestTelemetry(deviceId);
     if (!data) {
       return res.status(404).json({ success: false, message: 'No telemetry recorded yet' });
     }
@@ -36,7 +37,8 @@ router.get('/history', async (req, res) => {
   }
 
   try {
-    const history = await getHistoricalTelemetry(range, interval);
+    const { deviceId = 'esp32_node_01', range = '24h', interval = '5m' } = req.query;
+    const history = await getHistoricalTelemetry(deviceId, range, interval);
     res.json({
       success: true,
       range,

@@ -2,6 +2,7 @@ import mqttClient from "../config/mqtt_broker.js";
 import {recordTelemetry} from "../services/telemetry.service.js";
 import { emitTelemetryUpdate } from "../socket.js";
 import {handleIncomingTelemetry} from "../services/dosing.service.js"
+import { recordHeartbeat } from "../services/heartbeat.service.js";
 
 const TELEMETRY_TOPIC = 'hydro/+/telemetry';
 
@@ -23,7 +24,8 @@ export const initMQTTHandler = ()=>{
             if(topic.endsWith('/telemetry')){
                 const data = JSON.parse(message.toString());
                const rawSensors = data.sensors || data;
-                console.log(rawSensors)
+
+               await recordHeartbeat(data.device_id);
 
                 latestTelemetryCache = {
                 device_id: data.device_id || 'esp32_node_01',

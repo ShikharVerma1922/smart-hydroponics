@@ -12,13 +12,23 @@ async function runSmokeTest() {
 
   // 1. Connect to MQTT Broker
   const mqttClient = mqtt.connect(MQTT_URL);
-  const socket = io(BACKEND_URL);
+  const socket = io(BACKEND_URL, {
+    transports: ['websocket'],
+  });
 
   let pumpCommandReceived = false;
   let socketEventReceived = false;
 
-  await new Promise((resolve) => mqttClient.on('connect', resolve));
-  console.log('[MQTT] Connected to Mosquitto broker');
+ await Promise.all([
+    new Promise((resolve) => mqttClient.on('connect', () => {
+      console.log('[MQTT] Connected to Mosquitto broker');
+      resolve();
+    })),
+    new Promise((resolve) => socket.on('connect', () => {
+      console.log(`[Socket.io] Connected to Backend WebSocket (ID: ${socket.id})`);
+      resolve();
+    })),
+  ]); 
 
   // Subscribe to command topic to listen for ESP32 actuation pulses
   const commandTopic = `hydro/${DEVICE_ID}/commands`;
@@ -32,11 +42,6 @@ async function runSmokeTest() {
         pumpCommandReceived = true;
       }
     }
-  });
-
-  // Listen to Socket.io events
-  socket.on('connect', () => {
-    console.log('[Socket.io] Connected to Backend WebSocket');
   });
 
   socket.on('dosing:event', (data) => {
@@ -66,8 +71,7 @@ async function runSmokeTest() {
   // 4. Verify PostgreSQL Dosing Log via REST API
   try {
     const res = await axios.get(`${BACKEND_URL}/api/dosing/logs?deviceId=${DEVICE_ID}&limit=1`);
-    const latestLog = res.data[0];
-    console.log("latest log:   \n",res.data)
+    const latestLog = res.data.data[0];
     if (latestLog && latestLog.pumpType === 'PH_DOWN' && latestLog.source === 'AUTONOMOUS_PH') {
       console.log(' [PASS] PostgreSQL audit verified. Latest Log ID:', latestLog.id);
     } else {
