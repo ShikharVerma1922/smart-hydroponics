@@ -1,10 +1,8 @@
-// backend/src/routes/actuator.routes.js
 import express from 'express';
 import { prisma } from '../config/prisma.js';
 import mqttClient from '../config/mqtt_broker.js';
 import { setDeviceLockout } from '../services/dosing.service.js';
-import { emitDosingEvent, emitSystemLockout } from '../socket.js';
-import { getIO } from '../socket.js';
+import { emitCirculationUpdate, emitDosingEvent, emitSystemLockout } from '../socket.js';
 
 const router = express.Router();
 
@@ -170,18 +168,13 @@ router.post('/circulation', async (req, res) => {
     console.log(`[Actuator MQTT] [${deviceId}] Set circulation -> ${mode}`);
 
     // 5. Broadcast state to connected frontend dashboards via Socket.io
-    try {
-      const io = getIO();
-      io.emit('circulation:update', {
-        deviceId,
-        mode,
-        runMin: payload.run_min,
-        restMin: payload.rest_min,
-        timestamp,
-      });
-    } catch (socketErr) {
-      console.warn('[Socket Warning] Could not broadcast circulation:update:', socketErr.message);
-    }
+    emitCirculationUpdate({
+      deviceId,
+      mode,
+      runMin: payload.run_min,
+      restMin: payload.rest_min,
+      timestamp,
+    });
 
     // 6. Return response
     return res.json({

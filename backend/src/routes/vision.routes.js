@@ -1,4 +1,3 @@
-// backend/src/routes/vision.routes.js
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -77,14 +76,16 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
 
       const mlResponse = await axios.post(ML_SERVICE_URL, form, {
         headers: form.getHeaders(),
-        timeout: 6000,
+        timeout: 15000,
       });
 
+      console.log(mlResponse.data)
+
       if (mlResponse.data) {
-        primaryLabel = mlResponse.data.diagnosis?.primary_label || mlResponse.data.primaryLabel || primaryLabel;
+        primaryLabel = mlResponse.data.diagnosis?.primaryLabel || mlResponse.data.primaryLabel || primaryLabel;
         confidence = parseFloat(mlResponse.data.diagnosis?.confidence ?? mlResponse.data.confidence ?? confidence);
         severity = mlResponse.data.diagnosis?.severity || mlResponse.data.severity || (primaryLabel === 'HEALTHY' ? 'LOW' : 'MODERATE');
-        classProbabilities = mlResponse.data.class_probabilities || mlResponse.data.classProbabilities || classProbabilities;
+        classProbabilities = mlResponse.data.classProbabilities || mlResponse.data.classProbabilities || classProbabilities;
       }
     } catch (mlErr) {
       console.warn(`[ML Service] FastAPI unreachable at ${ML_SERVICE_URL}. Using fallback baseline:`, mlErr.message);
@@ -94,6 +95,14 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
         severity = primaryLabel === 'HEALTHY' ? 'LOW' : 'MODERATE';
       }
     }
+
+    const existingActiveCooldown = await prisma.diagnosticReport.findFirst({
+      where: {
+        deviceId,
+        cooldownActiveTill: { gt: new Date() },
+      },
+      select: { cooldownActiveTill: true },
+    });
 
     // 2. Persist in PostgreSQL via DiagnosticReport model
     const report = await prisma.diagnosticReport.create({
@@ -105,6 +114,7 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
         severity,
         classProbabilities,
         actionTaken: 'Diagnosis pending telemetry evaluation',
+        cooldownActiveTill: existingActiveCooldown?.cooldownActiveTill ?? null,
       },
     });
 

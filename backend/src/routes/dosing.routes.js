@@ -1,4 +1,3 @@
-// backend/src/routes/dosing.routes.js
 import express from 'express';
 import { prisma } from '../config/prisma.js';
 

@@ -402,15 +402,17 @@ GET http://localhost:3000/uploads/canopy/canopy-1790510400000.jpg
 
 Socket.IO is served by the same HTTP server. Clients can connect to the base URL using the Socket.IO client; no auth, rooms, or client-side subscription events are currently implemented. Events are broadcast to all connected clients.
 
-| Event | Payload fields | Emitted when |
-| --- | --- | --- |
-| `telemetry:update` | Raw incoming device telemetry object (see MQTT section). | A telemetry MQTT message is received. |
-| `dosing:event` | `deviceId`, `pumpType`, `durationMs`, `source`, `rationale`, `timestamp` (epoch milliseconds). | A pump pulse is dispatched. |
-| `system:lockout` | `deviceId`, `isActive`, `remainingSeconds`, `rationale`. | Dosing/lockout state changes. |
-| `system:alert` | `deviceId`, `alertType`, `severity`, `message`, `timestamp` (epoch milliseconds). | A new system alert is created. |
-| `circulation:update` | `deviceId`, `mode`, `runMin`, `restMin`, `timestamp` (epoch milliseconds). | A circulation schedule is updated by the API. |
-
-`alertType` values: `ACIDIC_CRASH`, `OSMOTIC_TOXICITY`, `LOW_WATER_LEVEL`, `BIOTIC_STRESS`, `DESYNC_WARNING`. `severity` values: `LOW`, `MODERATE`, `HIGH`, `CRITICAL`.
+| Event Name | Trigger Frequency | Payload Structure | Frontend Purpose |
+| :--- | :--- | :--- | :--- |
+| `telemetry:stream` | Every 5–10s when an MQTT packet arrives | `{ deviceId, sensors: { ph, ec_ms_cm, water_temp_c, air_temp_c, humidity_pct, water_level_pct }, timestamp }` | Live updates for circular gauges, dials, environmental graphs, and reservoir level indicators. |
+| `dosing:event` | Fired on pump cycle dispatch (autonomous, ML-biased, or manual) | `{ deviceId, pumpType, durationMs, source, rationale, timestamp }` | Trigger toast notifications and flash real-time pump glow indicators. |
+| `dosing:logged` | Fired when a dosing record is persisted to PostgreSQL | `{ deviceId, log: { id, deviceId, pumpType, durationMs, source, rationale, mixingLockoutMin, diagnosticReportId, timestamp } }` | Prepend new row directly into historical dosing audit table without page refresh. |
+| `circulation:update` | Fired on circulation schedule/mode change | `{ deviceId, mode, runMin, restMin, timestamp }` | Synchronize circulation toggle controls, active mode badges, and duty-cycle interval displays. |
+| `system:lockout` | Fired when a 10m mixing lockout starts or is evaluated | `{ deviceId, isActive, remainingSeconds, rationale, lastPump }` | Render countdown progress timer and disable manual dosing overrides. |
+| `vision:cooldown` | Fired when ML-biased dosing completes | `{ deviceId, isActive, reportId, primaryLabel, activeTill }` | Display diagnostic lock banner preventing duplicate foliar intervention. |
+| `system:alert` | Fired on safety gate trips or desync flags | `{ id, deviceId, alertType, severity, message, timestamp }` | Display high-priority warning banners and sound critical alarm indicators. |
+| `alert:resolved` | Fired when sensor parameters normalize | `{ deviceId, alertType, resolvedBy, timestamp }` | Automatically dismiss active warning banners and restore nominal UI badges. |
+| `device:heartbeat` | Fired on node online/offline transition | `{ deviceId, isOnline, lastSeen, timestamp }` | Update node connectivity pill indicator (green online / red offline). |
 
 ## MQTT device interface
 

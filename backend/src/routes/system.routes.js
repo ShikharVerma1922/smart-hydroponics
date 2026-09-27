@@ -1,4 +1,3 @@
-// backend/src/routes/system.routes.js
 import express from 'express';
 import { prisma } from '../config/prisma.js';
 import { getDeviceLockout } from '../services/dosing.service.js';
@@ -61,7 +60,7 @@ router.get('/status', async (req, res) => {
       lastPump: remainingMs > 0 ? (lastDosingLog?.pumpType || null) : null,
     };
 
-    // 2. Calculate remaining 48h visual deficiency recovery lockout
+    // 2. Calculate remaining visual deficiency recovery lockout
     let visualCooldown = {
       isActive: false,
       remainingHours: 0,
@@ -85,7 +84,7 @@ router.get('/status', async (req, res) => {
       success: true,
       deviceId,
       deviceStatus: {
-        isOnline: device ? device.isOnline : false, // False if device record does not exist
+        isOnline: device ? device.isOnline : false, 
         activeRecipe: device?.activeRecipe?.cropName || 'Default Baseline',
       },
       mixingLockout,
@@ -189,7 +188,7 @@ router.post('/devices', async (req, res) => {
     if (existing) {
       return res.status(409).json({
         success: false,
-        error: `Device with ID "${deviceId}" already exists.`,
+        error: `Device with ID '${deviceId}' already exists.`,
       });
     }
 
@@ -201,7 +200,7 @@ router.post('/devices', async (req, res) => {
       if (!recipe) {
         return res.status(404).json({
           success: false,
-          error: `CropRecipe with ID "${recipeId}" does not exist.`,
+          error: `CropRecipe with ID '${recipeId}' does not exist.`,
         });
       }
     }
@@ -222,7 +221,7 @@ router.post('/devices', async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: `Device "${newDevice.id}" registered successfully.`,
+      message: `Device '${newDevice.id}' registered successfully.`,
       data: newDevice,
     });
   } catch (error) {
@@ -249,7 +248,7 @@ router.put('/devices/:id/recipe', async (req, res) => {
     if (!device) {
       return res.status(404).json({
         success: false,
-        error: `Device with ID "${id}" was not found.`,
+        error: `Device with ID '${id}' was not found.`,
       });
     }
 
@@ -261,7 +260,7 @@ router.put('/devices/:id/recipe', async (req, res) => {
       if (!recipe) {
         return res.status(404).json({
           success: false,
-          error: `CropRecipe with ID "${recipeId}" does not exist.`,
+          error: `CropRecipe with ID '${recipeId}' does not exist.`,
         });
       }
     }
@@ -280,8 +279,8 @@ router.put('/devices/:id/recipe', async (req, res) => {
     res.json({
       success: true,
       message: recipeId
-        ? `Device "${id}" assigned to "${updatedDevice.activeRecipe.cropName}".`
-        : `Device "${id}" recipe unassigned.`,
+        ? `Device '${id}' assigned to '${updatedDevice.activeRecipe.cropName}'.`
+        : `Device '${id}' recipe unassigned.`,
       data: updatedDevice,
     });
   } catch (error) {

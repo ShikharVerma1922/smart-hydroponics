@@ -1,12 +1,12 @@
-// backend/src/services/dosing.service.js
 import { prisma } from '../config/prisma.js';
 import mqttClient from '../config/mqtt_broker.js';
-import { emitDosingEvent, emitSystemAlert, emitSystemLockout } from '../socket.js';
+import { emitDosingEvent, emitSystemAlert, emitSystemLockout, emitAlertResolved, emitDosingLogged, emitVisionCooldown } from '../socket.js';
 import { getLatestTelemetry } from './influxQuery.service.js';
 
 // --- Per-Device In-Memory Mixing Cooldown Tracking ---
-const POST_DOSING_LOCKOUT_MS = 10 * 60 * 1000; // 10 minutes quiet period
-const deviceMixingLockouts = new Map(); // Map
+const POST_DOSING_LOCKOUT_MS = 10 * 60 * 1000;  
+const deviceMixingLockouts = new Map();
+const VISION_LOCKOUT_MS = 24 * 60 * 60 * 1000; 
 
 /**
  * Creates or updates an active unresolved SystemAlert record scoped to a specific device.
@@ -18,7 +18,7 @@ async function triggerSystemAlert(deviceId, alertType, severity, message) {
     });
 
     if (!existing) {
-      await prisma.systemAlert.create({
+      const createdAlert = await prisma.systemAlert.create({
         data: {
           deviceId,
           alertType,
@@ -27,11 +27,19 @@ async function triggerSystemAlert(deviceId, alertType, severity, message) {
           isResolved: false,
         },
       });
-      emitSystemAlert({ deviceId, alertType, severity, message, timestamp: Date.now() });
-      console.warn(`[System Alert Created] [${deviceId}]${alertType}: ${message}`);
+
+      emitSystemAlert({
+        id: createdAlert.id,
+        deviceId,
+        alertType,
+        severity,
+        message,
+        timestamp: Date.now(),
+      });
+      console.warn(`[System Alert Created] [\({deviceId}]\){alertType}: ${message}`);
     }
   } catch (err) {
-    console.error(`[System Alert DB Error] Failed to persist ${alertType} for${deviceId}:`, err.message);
+    console.error(`[System Alert DB Error] Failed to persist \({alertType} for\){deviceId}:`, err.message);
   }
 }
 
@@ -40,22 +48,40 @@ async function triggerSystemAlert(deviceId, alertType, severity, message) {
  */
 async function autoResolveAlert(deviceId, alertType) {
   try {
-    await prisma.systemAlert.updateMany({
+    const unresolvedAlerts = await prisma.systemAlert.findMany({
       where: { deviceId, alertType, isResolved: false },
-      data: {
-        isResolved: true,
-        resolvedAt: new Date(),
-        resolvedBy: 'SYSTEM',
-      },
     });
+
+    if (unresolvedAlerts.length > 0) {
+      await prisma.systemAlert.updateMany({
+        where: { deviceId, alertType, isResolved: false },
+        data: {
+          isResolved: true,
+          resolvedAt: new Date(),
+          resolvedBy: 'SYSTEM',
+        },
+      });
+
+      // Broadcast alert resolution to remove banners from dashboard
+      try {
+        emitAlertResolved({
+          deviceId,
+  alertType,
+  resolvedBy: 'SYSTEM',
+  timestamp: Date.now(),
+});
+      } catch (socketErr) {
+        console.warn(`[Socket Warning] alert:resolved emit failed:`, socketErr.message);
+      }
+    }
   } catch (err) {
-    console.error(`[System Alert Resolve Error] Failed to resolve ${alertType} for${deviceId}:`, err.message);
+    console.error(`[System Alert Resolve Error] Failed to resolve \({alertType} for\){deviceId}:`, err.message);
   }
 }
 
 /**
  * Publishes an MQTT pulse command to the target device's command topic
-*/
+ */
 async function executePumpPulse(deviceId, pumpType, durationMs, source, rationale, diagnosticReportId = null) {
   const payload = {
     command: 'RUN_PUMP',
@@ -64,49 +90,67 @@ async function executePumpPulse(deviceId, pumpType, durationMs, source, rational
     timestamp: Date.now(),
   };
 
-  // Dynamic MQTT actuator topic per device
   const topic = `hydro/${deviceId}/commands`;
 
   mqttClient.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => {
     if (err) {
-      console.error(`[Actuator MQTT Error] [${deviceId}] Failed to publish${pumpType}:`, err.message);
+      console.error(`[Actuator MQTT Error] [\({deviceId}] Failed to publish\){pumpType}:`, err.message);
     } else {
-      console.log(`[Actuator MQTT] [${deviceId}] Dispatched ->${pumpType} for ${durationMs}ms`);
+      console.log(`[Actuator MQTT] [\({deviceId}] Dispatched ->\){pumpType} for ${durationMs}ms`);
     }
   });
 
+  // 1. Broadcast immediate dosing pulse to update active pump icons/indicators
   emitDosingEvent({
-  deviceId,
-  pumpType,
-  durationMs,
-  source,
-  rationale,
-  timestamp: Date.now(),
-});
-
-setDeviceLockout(deviceId, POST_DOSING_LOCKOUT_MS);
-
-  // Persist record to PostgreSQL
-  try {
-    return await prisma.dosingLog.create({
-     data: {
     deviceId,
     pumpType,
     durationMs,
     source,
     rationale,
-    mixingLockoutMin: 10,
-    diagnosticReportId: diagnosticReportId || null,
-  },
+    timestamp: Date.now(),
+  });
+
+  // 2. Set memory lockout and emit system:lockout event
+  setDeviceLockout(deviceId, POST_DOSING_LOCKOUT_MS);
+  emitSystemLockout({
+    deviceId,
+    isActive: true,
+    remainingSeconds: Math.round(POST_DOSING_LOCKOUT_MS / 1000),
+    rationale: `Mixing lockout initiated after ${pumpType} pulse.`,
+    lastPump: pumpType,
+  });
+
+  try {
+    const log = await prisma.dosingLog.create({
+      data: {
+        deviceId,
+        pumpType,
+        durationMs,
+        source,
+        rationale,
+        mixingLockoutMin: Math.round(POST_DOSING_LOCKOUT_MS / 60000),
+        diagnosticReportId: diagnosticReportId || null,
+      },
     });
+
+    // 3. Emit dosing log creation so table feeds update in real time
+    try {
+   emitDosingLogged({
+  deviceId,
+  log,
+});
+    } catch (socketErr) {
+      console.warn(`[Socket Warning] dosing:logged emit failed:`, socketErr.message);
+    }
+
+    return log;
   } catch (dbErr) {
     console.error(`[Dosing Log DB Error] [${deviceId}]:`, dbErr.message);
   }
 }
 
 /**
- * Executes a staggered nutrient dosing routine with a 15-second delay between Part A and Part B
- * to prevent calcium phosphate and gypsum precipitation in the reservoir.
+ * Executes a staggered nutrient dosing routine with a 15-second delay between Part A and Part B.
  */
 async function executeStaggeredNutrientDose(deviceId, durationA, durationB, source, rationale, reportId = null) {
   if (durationA > 0) {
@@ -118,7 +162,7 @@ async function executeStaggeredNutrientDose(deviceId, durationA, durationB, sour
       console.log(`[Dosing Engine] [${deviceId}] Enforcing 15-second sequential dilution delay before Part B...`);
       setTimeout(async () => {
         await executePumpPulse(deviceId, 'NUTRIENT_B', durationB, source, rationale, reportId);
-      }, 15000); // 15-second hydraulic separation
+      }, 15000);
     } else {
       await executePumpPulse(deviceId, 'NUTRIENT_B', durationB, source, rationale, reportId);
     }
@@ -133,11 +177,13 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   const deviceId = telemetry.device_id || 'esp32_node_01';
   const { ph, ec_ms_cm, water_level_pct } = telemetry.sensors;
 
+  const primaryLabel = mlReport?.primaryLabel || mlReport?.primary_label || 'HEALTHY';
+  const severity = mlReport?.severity || 'LOW';
+
   // -------------------------------------------------------------------------
-  // 1. PRIORITY SAFETY GATES (HARD STOPS & PERSISTENT SYSTEM ALERTS)
+  // 1. PRIORITY SAFETY GATES
   // -------------------------------------------------------------------------
 
-  // Safety Gate 1: Low Reservoir Level (< 15%)
   if (water_level_pct < 15.0) {
     const msg = `Critical tank water level (${water_level_pct}% < 15%). Pumps halted to prevent dry motor burn.`;
     await triggerSystemAlert(deviceId, 'LOW_WATER_LEVEL', 'CRITICAL', msg);
@@ -150,7 +196,6 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
     await autoResolveAlert(deviceId, 'LOW_WATER_LEVEL');
   }
 
-  // Safety Gate 2: Acidic Crash (pH < 5.5)
   if (ph < 5.5) {
     const msg = `Acidic crash detected (pH ${ph} < 5.5). No pH Up pump available. Manual buffering required.`;
     await triggerSystemAlert(deviceId, 'ACIDIC_CRASH', 'CRITICAL', msg);
@@ -163,7 +208,6 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
     await autoResolveAlert(deviceId, 'ACIDIC_CRASH');
   }
 
-  // Safety Gate 3: Osmotic Toxicity (EC > 2.4 mS/cm)
   if (ec_ms_cm > 2.4) {
     const msg = `Osmotic ceiling exceeded (EC ${ec_ms_cm} > 2.4 mS/cm). Manual freshwater dilution required.`;
     await triggerSystemAlert(deviceId, 'OSMOTIC_TOXICITY', 'CRITICAL', msg);
@@ -176,11 +220,15 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
     await autoResolveAlert(deviceId, 'OSMOTIC_TOXICITY');
   }
 
-  // Safety Gate 4: 10-Minute Mixing Lockout (Per-Device)
   const activeLockoutTill = deviceMixingLockouts.get(deviceId) || 0;
   if (now < activeLockoutTill) {
-    
     const remainingSec = Math.round((activeLockoutTill - now) / 1000);
+    emitSystemLockout({
+      deviceId,
+      isActive: true,
+      remainingSeconds: remainingSec,
+      rationale: `Mixing lockout active: ${remainingSec}s remaining for reservoir homogenization.`,
+    });
     return {
       status: 'COOLDOWN',
       action: 'NONE',
@@ -189,7 +237,7 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   }
 
   // -------------------------------------------------------------------------
-  // 2. RETRIEVE DEVICE-SPECIFIC ACTIVE CROP RECIPE
+  // 2. RETRIEVE ACTIVE CROP RECIPE
   // -------------------------------------------------------------------------
   const deviceRecord = await prisma.device.findUnique({
     where: { id: deviceId },
@@ -197,29 +245,18 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   });
 
   const activeRecipe = deviceRecord?.activeRecipe;
-  const targetPhMin = activeRecipe?.targetPhMin ?? 5.8;
   const targetPhMax = activeRecipe?.targetPhMax ?? 6.5;
   const targetEcMin = activeRecipe?.targetEcMin ?? 1.2;
-  const targetEcMax = activeRecipe?.targetEcMax ?? 1.8;
 
   // -------------------------------------------------------------------------
-  // 3. EVALUATE HIGH pH DRIFT / ALKALINE LOCKOUT (pH > 6.5)
+  // 3. pH DRIFT CHECK
   // -------------------------------------------------------------------------
   if (ph > targetPhMax) {
-    deviceMixingLockouts.set(deviceId, now + POST_DOSING_LOCKOUT_MS);
-    
     const rationale = ec_ms_cm >= targetEcMin
       ? 'Nutrients present but locked out by pH. Lower pH only.'
       : 'Standard closed-loop acid pulse. Hold nutrient salts.';
 
-    emitSystemLockout({
-        deviceId,
-        isActive: true,
-        remainingSeconds: 600,
-        rationale,
-    });
-
-    await executePumpPulse(deviceId, 'PH_DOWN', 2500, 'AUTONOMOUS_PH', rationale, mlReport?.id ?? null);
+    await executePumpPulse(deviceId, 'PH_DOWN', 2500, 'AUTONOMOUS_PH', rationale, null);
 
     return {
       status: 'DOSED',
@@ -230,9 +267,8 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   }
 
   // -------------------------------------------------------------------------
-  // 4. BIOTIC STRESS OR PATHOGEN CHECK (ML Diagnostic)
+  // 4. BIOTIC STRESS OR PATHOGEN CHECK
   // -------------------------------------------------------------------------
-  const primaryLabel = mlReport?.primaryLabel ?? 'HEALTHY';
   if (primaryLabel === 'BIOTIC_STRESS' || primaryLabel === 'PATHOGEN') {
     const msg = `Biotic stress/pathogen detected (${primaryLabel}). Manual inspection required.`;
     await triggerSystemAlert(deviceId, 'BIOTIC_STRESS', 'HIGH', msg);
@@ -244,91 +280,83 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   }
 
   // -------------------------------------------------------------------------
-  // 5. EVALUATE EC DEFICIT & ML-BIASED DOSING (5.8 <= pH <= 6.5)
+  // 5. EVALUATE EC DEFICIT & ML-BIASED DOSING
   // -------------------------------------------------------------------------
   if (ec_ms_cm < targetEcMin) {
     const isVisualCooldownActive =
       mlReport?.cooldownActiveTill && new Date(mlReport.cooldownActiveTill) > new Date();
 
-    deviceMixingLockouts.set(deviceId, now + POST_DOSING_LOCKOUT_MS);
-
-    // A. Visual cooldown active OR baseline -> AUTONOMOUS_EC 1:1 Balanced Replenishment
-    if (!mlReport || isVisualCooldownActive || primaryLabel === 'HEALTHY') {
+    // Fallback if cooldown active, no report, healthy, or LOW severity
+    if (!mlReport || isVisualCooldownActive || primaryLabel === 'HEALTHY' || severity === 'LOW') {
       const rationale = isVisualCooldownActive
-        ? '48h visual cooldown active. Falling back to 1:1 standard replenishment.'
-        : 'Balanced 1:1 replenishment with 15s sequential delay.';
+        ? `${Math.round(VISION_LOCKOUT_MS / 3600000)}h visual cooldown active. Balanced 1:1 replenishment.`
+        : primaryLabel === 'HEALTHY'
+        ? 'Canopy healthy. Balanced 1:1 EC correction.'
+        : 'Low symptom confidence. Defaulting to safe 1:1 replenishment.';
 
-      await executeStaggeredNutrientDose(deviceId, 2500, 2500, 'AUTONOMOUS_EC', rationale, mlReport?.id ?? null);
+      const durationA = 2500;
+      const durationB = 2500;
+
+      await executeStaggeredNutrientDose(deviceId, durationA, durationB, 'AUTONOMOUS_EC', rationale, null);
 
       return {
         status: 'DOSED',
-        pumps: ['NUTRIENT_A', 'NUTRIENT_B'],
+        pumps: { durationA, durationB },
         ratio: '1:1 (2500ms / 2500ms)',
         rationale,
       };
     }
 
-    // B. ML_BIASED Targeted Formulations
-    let durationA = 0;
-    let durationB = 0;
+    // ML-Biased Formulations (Maintains ~5000ms total dose volume)
+    let durationA = 2500;
+    let durationB = 2500;
     let rationale = '';
+
+    const isHighOrCritical = severity === 'HIGH' || severity === 'CRITICAL';
 
     switch (primaryLabel) {
       case 'NITROGEN_DEFICIENCY':
-        durationA = 4000;
-        durationB = 2000;
-        rationale = 'A-Biased (2:1 Ratio): High nitrate and calcium boost.';
+        durationA = isHighOrCritical ? 3500 : 3000;
+        durationB = isHighOrCritical ? 1500 : 2000;
+        rationale = `A-Biased (${severity}): Nitrogen/Calcium Nitrate enrichment.`;
         break;
 
       case 'PHOSPHORUS_DEFICIENCY':
-        durationA = 2000;
-        durationB = 4000;
-        rationale = 'B-Biased (1:2 Ratio): Monopotassium phosphate boost.';
-        break;
-
       case 'POTASSIUM_DEFICIENCY':
-        durationA = 2000;
-        durationB = 4000;
-        rationale = 'B-Biased (1:2 Ratio): Soluble potassium salt boost.';
+        durationA = isHighOrCritical ? 1500 : 2000;
+        durationB = isHighOrCritical ? 3500 : 3000;
+        rationale = `B-Biased (${severity}): Potassium/Phosphate enrichment.`;
         break;
 
       case 'CALCIUM_DEFICIENCY':
-        durationA = 4000;
-        durationB = 0;
-        rationale = 'Stock A exclusive pulse (Calcium Nitrate).';
-        break;
-
-      case 'IRON_DEFICIENCY':
-        durationA = 4000;
-        durationB = 0;
-        rationale = 'Stock A exclusive pulse (Chelated Iron).';
+        durationA = isHighOrCritical ? 3750 : 3250;
+        durationB = isHighOrCritical ? 1250 : 1750;
+        rationale = `A-Biased (${severity}): Elevated Calcium Nitrate with basal Stock B floor.`;
         break;
 
       case 'MAGNESIUM_DEFICIENCY':
-        durationA = 0;
-        durationB = 4000;
-        rationale = 'Stock B exclusive pulse (Magnesium Sulfate).';
+        durationA = isHighOrCritical ? 1250 : 1750;
+        durationB = isHighOrCritical ? 3750 : 3250;
+        rationale = `B-Biased (${severity}): Elevated Magnesium Sulfate with basal Stock A floor.`;
+        break;
+
+      case 'IRON_DEFICIENCY':
+        durationA = isHighOrCritical ? 3500 : 3000;
+        durationB = isHighOrCritical ? 1500 : 2000;
+        rationale = `A-Biased (${severity}): Chelated Iron replenishment.`;
         break;
 
       default:
         durationA = 2500;
         durationB = 2500;
-        rationale = 'Balanced 1:1 replenishment with 15s sequential delay.';
+        rationale = 'Balanced 1:1 replenishment.';
         break;
     }
 
-
-     emitSystemLockout({
-        deviceId,
-        isActive: true,
-        remainingSeconds: 600,
-        rationale,
-    });
-
     await executeStaggeredNutrientDose(deviceId, durationA, durationB, 'ML_BIASED', rationale, mlReport.id);
 
-    // Apply 48-hour visual lockout timestamp to the active report
-    const visualCooldownDate = new Date(now + 48 * 60 * 60 * 1000);
+    // Apply visual lockout timestamp to the active report and broadcast
+    const visualCooldownDate = new Date(now + VISION_LOCKOUT_MS);
     await prisma.diagnosticReport.update({
       where: { id: mlReport.id },
       data: {
@@ -337,18 +365,31 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
       },
     });
 
+    try {
+emitVisionCooldown({
+  deviceId,
+  isActive: true,
+  reportId: mlReport.id,
+  primaryLabel,
+  activeTill: visualCooldownDate,
+});
+    } catch (socketErr) {
+      console.warn(`[Socket Warning] vision:cooldown emit failed:`, socketErr.message);
+    }
+
     return {
       status: 'DOSED',
       pumps: { durationA, durationB },
+      ratio: `\({durationA}ms /\){durationB}ms`,
       rationale,
     };
   }
 
   // -------------------------------------------------------------------------
-  // 6. FALSE ALARM / DESYNC (ML flags deficiency, but EC is already optimal)
+  // 6. FALSE ALARM / DESYNC (EC is already sufficient)
   // -------------------------------------------------------------------------
   if (mlReport && primaryLabel !== 'HEALTHY' && ec_ms_cm >= targetEcMin) {
-    const msg = `ML diagnosed ${primaryLabel}, but reservoir EC is optimal ${ec_ms_cm} mS/cm). Nutrients held to prevent burn.`;
+    const msg = `ML diagnosed \({primaryLabel}, but reservoir EC is optimal (\){ec_ms_cm} >= ${targetEcMin} mS/cm). Nutrients held to prevent burn.`;
     await triggerSystemAlert(deviceId, 'DESYNC_WARNING', 'MODERATE', msg);
 
     return {
@@ -359,7 +400,7 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   }
 
   // -------------------------------------------------------------------------
-  // 7. HEALTHY / NOMINAL BASELINE
+  // 7. NOMINAL BASELINE
   // -------------------------------------------------------------------------
   return {
     status: 'BALANCED',
@@ -368,13 +409,8 @@ export async function evaluateDosingDecision(telemetry, mlReport = null) {
   };
 }
 
-/**
- * Public handler called by the MQTT telemetry subscriber.
- */
 export async function handleIncomingTelemetry(telemetry) {
   const deviceId = telemetry.device_id || 'esp32_node_01';
-
-  // Find the latest active diagnosis for this specific device
   const latestReport = await prisma.diagnosticReport.findFirst({
     where: { deviceId },
     orderBy: { timestamp: 'desc' },
@@ -383,9 +419,6 @@ export async function handleIncomingTelemetry(telemetry) {
   return await evaluateDosingDecision(telemetry, latestReport);
 }
 
-/**
- * Public handler called by POST /api/ml/diagnostic-report.
- */
 export async function handleIncomingDiagnosticReport(diagnosticReport) {
   const deviceId = diagnosticReport.deviceId || 'esp32_node_01';
   const latestTelemetry = await getLatestTelemetry(deviceId);
@@ -413,7 +446,7 @@ export async function handleIncomingDiagnosticReport(diagnosticReport) {
 }
 
 export function getDeviceLockout(deviceId) {
- if (!deviceId) return 0;
+  if (!deviceId) return 0;
   return deviceMixingLockouts.get(deviceId) || 0;
 }
 
