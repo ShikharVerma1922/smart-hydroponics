@@ -67,6 +67,9 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
       NITROGEN_DEFICIENCY: 0.03,
       POTASSIUM_DEFICIENCY: 0.02,
       PHOSPHORUS_DEFICIENCY: 0.01,
+      CALCIUM_DEFICIENCY: 0.0,
+      MAGNESIUM_DEFICIENCY: 0.0,
+      IRON_DEFICIENCY: 0.0,
     };
 
     // 1. Forward image to Python FastAPI vision service
@@ -79,23 +82,45 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
         timeout: 15000,
       });
 
-      console.log(mlResponse.data)
+      const resData = mlResponse.data;
 
-      if (mlResponse.data) {
-        primaryLabel = mlResponse.data.diagnosis?.primaryLabel || mlResponse.data.primaryLabel || primaryLabel;
-        confidence = parseFloat(mlResponse.data.diagnosis?.confidence ?? mlResponse.data.confidence ?? confidence);
-        severity = mlResponse.data.diagnosis?.severity || mlResponse.data.severity || (primaryLabel === 'HEALTHY' ? 'LOW' : 'MODERATE');
-        classProbabilities = mlResponse.data.classProbabilities || mlResponse.data.classProbabilities || classProbabilities;
+      if (resData) {
+        primaryLabel = resData.primary_label || resData.primaryLabel || primaryLabel;
+        confidence = parseFloat(resData.confidence ?? confidence);
+        severity = resData.severity || (primaryLabel === 'HEALTHY' ? 'NONE' : 'MODERATE');
+        classProbabilities = resData.class_probabilities || resData.classProbabilities || classProbabilities;
       }
     } catch (mlErr) {
-      console.warn(`[ML Service] FastAPI unreachable at ${ML_SERVICE_URL}. Using fallback baseline:`, mlErr.message);
-      // Optional manual testing override from client form-data
+      if (mlErr.response && mlErr.response.status === 422) {
+        const errorDetail = mlErr.response.data?.detail || 'Image rejected by vision pre-filter.';
+        console.warn(`[ML Service 422] Canopy validation failed for device ${deviceId}:`, errorDetail);
+
+        // Clean up the invalid file from local disk
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+
+        return res.status(422).json({
+          success: false,
+          error: 'Unprocessable Canopy Image',
+          detail: errorDetail,
+        });
+      }
+
+      // Handle transient errors (e.g. Service Unavailable, Network Timeout)
+      console.warn(`[ML Service] FastAPI request failed (${mlErr.message}). Checking manual mock override.`);
+
       if (req.body.mockLabel) {
         primaryLabel = req.body.mockLabel;
-        severity = primaryLabel === 'HEALTHY' ? 'LOW' : 'MODERATE';
+        severity = primaryLabel === 'HEALTHY' ? 'NONE' : 'MODERATE';
+      } else {
+        // If the ML service is completely down and no mock is specified,
+        // do not guess deficiency; fail safely or inform caller
+        console.warn('[ML Service] Operating in offline mode. Falling back to baseline HEALTHY.');
       }
     }
 
+    // 2. Cooldown check: Inherit active cooldown so a new photo doesn't bypass lockout
     const existingActiveCooldown = await prisma.diagnosticReport.findFirst({
       where: {
         deviceId,
@@ -104,7 +129,7 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
       select: { cooldownActiveTill: true },
     });
 
-    // 2. Persist in PostgreSQL via DiagnosticReport model
+    // 3. Persist in PostgreSQL via DiagnosticReport model
     const report = await prisma.diagnosticReport.create({
       data: {
         deviceId,
@@ -118,22 +143,21 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
       },
     });
 
-    // 3. Trigger Slow-Loop remediation logic asynchronously
+    // 4. Trigger Slow-Loop remediation logic asynchronously
     handleIncomingDiagnosticReport(report).catch((err) => {
       console.error('[Vision Dosing Evaluation Error]:', err.message);
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       message: 'Canopy image diagnosed and logged',
       data: report,
     });
   } catch (error) {
     console.error('Error handling diagnostic report:', error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
-
 /**
  * GET /api/vision/latest
  * Query: ?deviceId=esp32_node_01
