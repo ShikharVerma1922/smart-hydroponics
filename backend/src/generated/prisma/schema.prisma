@@ -1,0 +1,127 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DosingSource {
+  AUTONOMOUS_EC
+  AUTONOMOUS_PH
+  ML_BIASED
+  MANUAL_OVERRIDE
+}
+
+enum PumpType {
+  PH_DOWN
+  NUTRIENT_A
+  NUTRIENT_B
+}
+
+enum SeverityLevel {
+  NONE
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum AlertType {
+  ACIDIC_CRASH
+  OSMOTIC_TOXICITY
+  LOW_WATER_LEVEL
+  BIOTIC_STRESS
+  DESYNC_WARNING
+}
+
+// 1. Central Device Registry
+model Device {
+  id        String   @id // e.g., "esp32_node_01", "esp32_node_02"
+  name      String // e.g., "Hydroponics Bench 1"
+  location  String? // e.g., "Greenhouse Zone A"
+  isOnline  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Relationships
+  activeRecipeId String?
+  activeRecipe   CropRecipe? @relation("DeviceActiveRecipe", fields: [activeRecipeId], references: [id], onDelete: SetNull)
+
+  diagnosticReports DiagnosticReport[]
+  dosingLogs        DosingLog[]
+  alerts            SystemAlert[]
+}
+
+// 2. CropRecipe 
+model CropRecipe {
+  id            String   @id @default(uuid())
+  cropName      String   @unique
+  targetPhMin   Float    @default(5.8)
+  targetPhMax   Float    @default(6.5)
+  targetEcMin   Float    @default(1.2)
+  targetEcMax   Float    @default(1.8)
+  ecCeiling     Float    @default(2.4)
+  minWaterLevel Float    @default(15.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignedDevices Device[] @relation("DeviceActiveRecipe")
+}
+
+// 3. DiagnosticReport (Linked to Device)
+model DiagnosticReport {
+  id                 String        @id @default(uuid())
+  deviceId           String
+  device             Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  timestamp          DateTime      @default(now())
+  imageUrl           String
+  primaryLabel       String
+  confidence         Float
+  severity           SeverityLevel @default(MODERATE)
+  classProbabilities Json
+  actionTaken        String?
+  cooldownActiveTill DateTime?
+  dosingEvents       DosingLog[]
+
+  @@index([deviceId, timestamp])
+}
+
+// 4. DosingLog (Explicitly tracks which device pulsed)
+model DosingLog {
+  id                 String            @id @default(uuid())
+  deviceId           String
+  device             Device            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  timestamp          DateTime          @default(now())
+  source             DosingSource
+  pumpType           PumpType
+  durationMs         Int
+  rationale          String
+  mixingLockoutMin   Int               @default(10)
+  diagnosticReportId String?
+  diagnosticReport   DiagnosticReport? @relation(fields: [diagnosticReportId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, timestamp])
+  @@index([pumpType])
+}
+
+// 5. SystemAlert (Tracks alerts per specific device)
+model SystemAlert {
+  id         String        @id @default(uuid())
+  deviceId   String
+  device     Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  timestamp  DateTime      @default(now())
+  alertType  AlertType
+  severity   SeverityLevel @default(CRITICAL)
+  message    String
+  isResolved Boolean       @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@index([deviceId, isResolved, timestamp])
+}
