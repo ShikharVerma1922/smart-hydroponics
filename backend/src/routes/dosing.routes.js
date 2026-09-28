@@ -10,6 +10,15 @@ const router = express.Router();
 router.get('/logs', async (req, res) => {
   const { deviceId, source, page = 1, limit = 20 } = req.query;
 
+  const validSources = ['ML_BIASED', 'AUTONOMOUS_PH', 'AUTONOMOUS_EC', 'MANUAL_OVERRIDE']
+
+  if(!validSources.includes(source)){
+    return res.status(400).json({
+      success: false,
+      error: `Invalid dosing source. Must be one of: ${validSources.join(', ')}`,
+    })
+  }
+
   const take = Math.min(parseInt(limit, 10) || 20, 50);
   const skip = ((parseInt(page, 10) || 1) - 1) * take;
 
