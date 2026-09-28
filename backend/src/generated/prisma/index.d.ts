@@ -78,7 +78,11 @@ export const AlertType: {
   OSMOTIC_TOXICITY: 'OSMOTIC_TOXICITY',
   LOW_WATER_LEVEL: 'LOW_WATER_LEVEL',
   BIOTIC_STRESS: 'BIOTIC_STRESS',
-  DESYNC_WARNING: 'DESYNC_WARNING'
+  DESYNC_WARNING: 'DESYNC_WARNING',
+  SENSOR_FAULT: 'SENSOR_FAULT',
+  ACTUATOR_COMMS_FAILURE: 'ACTUATOR_COMMS_FAILURE',
+  PARTIAL_DOSE: 'PARTIAL_DOSE',
+  DOSE_CAP_EXCEEDED: 'DOSE_CAP_EXCEEDED'
 };
 
 export type AlertType = (typeof AlertType)[keyof typeof AlertType]
@@ -1436,8 +1440,20 @@ export namespace Prisma {
 
   export type AggregateDevice = {
     _count: DeviceCountAggregateOutputType | null
+    _avg: DeviceAvgAggregateOutputType | null
+    _sum: DeviceSumAggregateOutputType | null
     _min: DeviceMinAggregateOutputType | null
     _max: DeviceMaxAggregateOutputType | null
+  }
+
+  export type DeviceAvgAggregateOutputType = {
+    circRunMin: number | null
+    circRestMin: number | null
+  }
+
+  export type DeviceSumAggregateOutputType = {
+    circRunMin: number | null
+    circRestMin: number | null
   }
 
   export type DeviceMinAggregateOutputType = {
@@ -1447,6 +1463,10 @@ export namespace Prisma {
     isOnline: boolean | null
     createdAt: Date | null
     activeRecipeId: string | null
+    circulationMode: string | null
+    circRunMin: number | null
+    circRestMin: number | null
+    circUpdatedAt: Date | null
   }
 
   export type DeviceMaxAggregateOutputType = {
@@ -1456,6 +1476,10 @@ export namespace Prisma {
     isOnline: boolean | null
     createdAt: Date | null
     activeRecipeId: string | null
+    circulationMode: string | null
+    circRunMin: number | null
+    circRestMin: number | null
+    circUpdatedAt: Date | null
   }
 
   export type DeviceCountAggregateOutputType = {
@@ -1465,9 +1489,23 @@ export namespace Prisma {
     isOnline: number
     createdAt: number
     activeRecipeId: number
+    circulationMode: number
+    circRunMin: number
+    circRestMin: number
+    circUpdatedAt: number
     _all: number
   }
 
+
+  export type DeviceAvgAggregateInputType = {
+    circRunMin?: true
+    circRestMin?: true
+  }
+
+  export type DeviceSumAggregateInputType = {
+    circRunMin?: true
+    circRestMin?: true
+  }
 
   export type DeviceMinAggregateInputType = {
     id?: true
@@ -1476,6 +1514,10 @@ export namespace Prisma {
     isOnline?: true
     createdAt?: true
     activeRecipeId?: true
+    circulationMode?: true
+    circRunMin?: true
+    circRestMin?: true
+    circUpdatedAt?: true
   }
 
   export type DeviceMaxAggregateInputType = {
@@ -1485,6 +1527,10 @@ export namespace Prisma {
     isOnline?: true
     createdAt?: true
     activeRecipeId?: true
+    circulationMode?: true
+    circRunMin?: true
+    circRestMin?: true
+    circUpdatedAt?: true
   }
 
   export type DeviceCountAggregateInputType = {
@@ -1494,6 +1540,10 @@ export namespace Prisma {
     isOnline?: true
     createdAt?: true
     activeRecipeId?: true
+    circulationMode?: true
+    circRunMin?: true
+    circRestMin?: true
+    circUpdatedAt?: true
     _all?: true
   }
 
@@ -1535,6 +1585,18 @@ export namespace Prisma {
     /**
      * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
      * 
+     * Select which fields to average
+    **/
+    _avg?: DeviceAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: DeviceSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
      * Select which fields to find the minimum value
     **/
     _min?: DeviceMinAggregateInputType
@@ -1565,6 +1627,8 @@ export namespace Prisma {
     take?: number
     skip?: number
     _count?: DeviceCountAggregateInputType | true
+    _avg?: DeviceAvgAggregateInputType
+    _sum?: DeviceSumAggregateInputType
     _min?: DeviceMinAggregateInputType
     _max?: DeviceMaxAggregateInputType
   }
@@ -1576,7 +1640,13 @@ export namespace Prisma {
     isOnline: boolean
     createdAt: Date
     activeRecipeId: string | null
+    circulationMode: string
+    circRunMin: number
+    circRestMin: number
+    circUpdatedAt: Date
     _count: DeviceCountAggregateOutputType | null
+    _avg: DeviceAvgAggregateOutputType | null
+    _sum: DeviceSumAggregateOutputType | null
     _min: DeviceMinAggregateOutputType | null
     _max: DeviceMaxAggregateOutputType | null
   }
@@ -1602,6 +1672,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: boolean
     activeRecipeId?: boolean
+    circulationMode?: boolean
+    circRunMin?: boolean
+    circRestMin?: boolean
+    circUpdatedAt?: boolean
     activeRecipe?: boolean | Device$activeRecipeArgs<ExtArgs>
     diagnosticReports?: boolean | Device$diagnosticReportsArgs<ExtArgs>
     dosingLogs?: boolean | Device$dosingLogsArgs<ExtArgs>
@@ -1616,6 +1690,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: boolean
     activeRecipeId?: boolean
+    circulationMode?: boolean
+    circRunMin?: boolean
+    circRestMin?: boolean
+    circUpdatedAt?: boolean
     activeRecipe?: boolean | Device$activeRecipeArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
@@ -1626,6 +1704,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: boolean
     activeRecipeId?: boolean
+    circulationMode?: boolean
+    circRunMin?: boolean
+    circRestMin?: boolean
+    circUpdatedAt?: boolean
     activeRecipe?: boolean | Device$activeRecipeArgs<ExtArgs>
   }, ExtArgs["result"]["device"]>
 
@@ -1636,9 +1718,13 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: boolean
     activeRecipeId?: boolean
+    circulationMode?: boolean
+    circRunMin?: boolean
+    circRestMin?: boolean
+    circUpdatedAt?: boolean
   }
 
-  export type DeviceOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "location" | "isOnline" | "createdAt" | "activeRecipeId", ExtArgs["result"]["device"]>
+  export type DeviceOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "name" | "location" | "isOnline" | "createdAt" | "activeRecipeId" | "circulationMode" | "circRunMin" | "circRestMin" | "circUpdatedAt", ExtArgs["result"]["device"]>
   export type DeviceInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     activeRecipe?: boolean | Device$activeRecipeArgs<ExtArgs>
     diagnosticReports?: boolean | Device$diagnosticReportsArgs<ExtArgs>
@@ -1668,6 +1754,10 @@ export namespace Prisma {
       isOnline: boolean
       createdAt: Date
       activeRecipeId: string | null
+      circulationMode: string
+      circRunMin: number
+      circRestMin: number
+      circUpdatedAt: Date
     }, ExtArgs["result"]["device"]>
     composites: {}
   }
@@ -2101,6 +2191,10 @@ export namespace Prisma {
     readonly isOnline: FieldRef<"Device", 'Boolean'>
     readonly createdAt: FieldRef<"Device", 'DateTime'>
     readonly activeRecipeId: FieldRef<"Device", 'String'>
+    readonly circulationMode: FieldRef<"Device", 'String'>
+    readonly circRunMin: FieldRef<"Device", 'Int'>
+    readonly circRestMin: FieldRef<"Device", 'Int'>
+    readonly circUpdatedAt: FieldRef<"Device", 'DateTime'>
   }
     
 
@@ -7308,7 +7402,11 @@ export namespace Prisma {
     location: 'location',
     isOnline: 'isOnline',
     createdAt: 'createdAt',
-    activeRecipeId: 'activeRecipeId'
+    activeRecipeId: 'activeRecipeId',
+    circulationMode: 'circulationMode',
+    circRunMin: 'circRunMin',
+    circRestMin: 'circRestMin',
+    circUpdatedAt: 'circUpdatedAt'
   };
 
   export type DeviceScalarFieldEnum = (typeof DeviceScalarFieldEnum)[keyof typeof DeviceScalarFieldEnum]
@@ -7457,6 +7555,20 @@ export namespace Prisma {
 
 
   /**
+   * Reference to a field of type 'Int'
+   */
+  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+    
+
+
+  /**
+   * Reference to a field of type 'Int[]'
+   */
+  export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+  /**
    * Reference to a field of type 'Float'
    */
   export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
@@ -7527,20 +7639,6 @@ export namespace Prisma {
 
 
   /**
-   * Reference to a field of type 'Int'
-   */
-  export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
-    
-
-
-  /**
-   * Reference to a field of type 'Int[]'
-   */
-  export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
-    
-
-
-  /**
    * Reference to a field of type 'AlertType'
    */
   export type EnumAlertTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AlertType'>
@@ -7567,6 +7665,10 @@ export namespace Prisma {
     isOnline?: BoolFilter<"Device"> | boolean
     createdAt?: DateTimeFilter<"Device"> | Date | string
     activeRecipeId?: StringNullableFilter<"Device"> | string | null
+    circulationMode?: StringFilter<"Device"> | string
+    circRunMin?: IntFilter<"Device"> | number
+    circRestMin?: IntFilter<"Device"> | number
+    circUpdatedAt?: DateTimeFilter<"Device"> | Date | string
     activeRecipe?: XOR<CropRecipeNullableScalarRelationFilter, CropRecipeWhereInput> | null
     diagnosticReports?: DiagnosticReportListRelationFilter
     dosingLogs?: DosingLogListRelationFilter
@@ -7580,6 +7682,10 @@ export namespace Prisma {
     isOnline?: SortOrder
     createdAt?: SortOrder
     activeRecipeId?: SortOrderInput | SortOrder
+    circulationMode?: SortOrder
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
+    circUpdatedAt?: SortOrder
     activeRecipe?: CropRecipeOrderByWithRelationInput
     diagnosticReports?: DiagnosticReportOrderByRelationAggregateInput
     dosingLogs?: DosingLogOrderByRelationAggregateInput
@@ -7596,6 +7702,10 @@ export namespace Prisma {
     isOnline?: BoolFilter<"Device"> | boolean
     createdAt?: DateTimeFilter<"Device"> | Date | string
     activeRecipeId?: StringNullableFilter<"Device"> | string | null
+    circulationMode?: StringFilter<"Device"> | string
+    circRunMin?: IntFilter<"Device"> | number
+    circRestMin?: IntFilter<"Device"> | number
+    circUpdatedAt?: DateTimeFilter<"Device"> | Date | string
     activeRecipe?: XOR<CropRecipeNullableScalarRelationFilter, CropRecipeWhereInput> | null
     diagnosticReports?: DiagnosticReportListRelationFilter
     dosingLogs?: DosingLogListRelationFilter
@@ -7609,9 +7719,15 @@ export namespace Prisma {
     isOnline?: SortOrder
     createdAt?: SortOrder
     activeRecipeId?: SortOrderInput | SortOrder
+    circulationMode?: SortOrder
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
+    circUpdatedAt?: SortOrder
     _count?: DeviceCountOrderByAggregateInput
+    _avg?: DeviceAvgOrderByAggregateInput
     _max?: DeviceMaxOrderByAggregateInput
     _min?: DeviceMinOrderByAggregateInput
+    _sum?: DeviceSumOrderByAggregateInput
   }
 
   export type DeviceScalarWhereWithAggregatesInput = {
@@ -7624,6 +7740,10 @@ export namespace Prisma {
     isOnline?: BoolWithAggregatesFilter<"Device"> | boolean
     createdAt?: DateTimeWithAggregatesFilter<"Device"> | Date | string
     activeRecipeId?: StringNullableWithAggregatesFilter<"Device"> | string | null
+    circulationMode?: StringWithAggregatesFilter<"Device"> | string
+    circRunMin?: IntWithAggregatesFilter<"Device"> | number
+    circRestMin?: IntWithAggregatesFilter<"Device"> | number
+    circUpdatedAt?: DateTimeWithAggregatesFilter<"Device"> | Date | string
   }
 
   export type CropRecipeWhereInput = {
@@ -7954,6 +8074,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     activeRecipe?: CropRecipeCreateNestedOneWithoutAssignedDevicesInput
     diagnosticReports?: DiagnosticReportCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogCreateNestedManyWithoutDeviceInput
@@ -7967,6 +8091,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: Date | string
     activeRecipeId?: string | null
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     diagnosticReports?: DiagnosticReportUncheckedCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogUncheckedCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertUncheckedCreateNestedManyWithoutDeviceInput
@@ -7978,6 +8106,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipe?: CropRecipeUpdateOneWithoutAssignedDevicesNestedInput
     diagnosticReports?: DiagnosticReportUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUpdateManyWithoutDeviceNestedInput
@@ -7991,6 +8123,10 @@ export namespace Prisma {
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipeId?: NullableStringFieldUpdateOperationsInput | string | null
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     diagnosticReports?: DiagnosticReportUncheckedUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUncheckedUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUncheckedUpdateManyWithoutDeviceNestedInput
@@ -8003,6 +8139,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: Date | string
     activeRecipeId?: string | null
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
   }
 
   export type DeviceUpdateManyMutationInput = {
@@ -8011,6 +8151,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type DeviceUncheckedUpdateManyInput = {
@@ -8020,6 +8164,10 @@ export namespace Prisma {
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipeId?: NullableStringFieldUpdateOperationsInput | string | null
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type CropRecipeCreateInput = {
@@ -8422,6 +8570,17 @@ export namespace Prisma {
     not?: NestedDateTimeFilter<$PrismaModel> | Date | string
   }
 
+  export type IntFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntFilter<$PrismaModel> | number
+  }
+
   export type CropRecipeNullableScalarRelationFilter = {
     is?: CropRecipeWhereInput | null
     isNot?: CropRecipeWhereInput | null
@@ -8469,6 +8628,15 @@ export namespace Prisma {
     isOnline?: SortOrder
     createdAt?: SortOrder
     activeRecipeId?: SortOrder
+    circulationMode?: SortOrder
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
+    circUpdatedAt?: SortOrder
+  }
+
+  export type DeviceAvgOrderByAggregateInput = {
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
   }
 
   export type DeviceMaxOrderByAggregateInput = {
@@ -8478,6 +8646,10 @@ export namespace Prisma {
     isOnline?: SortOrder
     createdAt?: SortOrder
     activeRecipeId?: SortOrder
+    circulationMode?: SortOrder
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
+    circUpdatedAt?: SortOrder
   }
 
   export type DeviceMinOrderByAggregateInput = {
@@ -8487,6 +8659,15 @@ export namespace Prisma {
     isOnline?: SortOrder
     createdAt?: SortOrder
     activeRecipeId?: SortOrder
+    circulationMode?: SortOrder
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
+    circUpdatedAt?: SortOrder
+  }
+
+  export type DeviceSumOrderByAggregateInput = {
+    circRunMin?: SortOrder
+    circRestMin?: SortOrder
   }
 
   export type StringWithAggregatesFilter<$PrismaModel = never> = {
@@ -8545,6 +8726,22 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedDateTimeFilter<$PrismaModel>
     _max?: NestedDateTimeFilter<$PrismaModel>
+  }
+
+  export type IntWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
+    _count?: NestedIntFilter<$PrismaModel>
+    _avg?: NestedFloatFilter<$PrismaModel>
+    _sum?: NestedIntFilter<$PrismaModel>
+    _min?: NestedIntFilter<$PrismaModel>
+    _max?: NestedIntFilter<$PrismaModel>
   }
 
   export type FloatFilter<$PrismaModel = never> = {
@@ -8796,17 +8993,6 @@ export namespace Prisma {
     not?: NestedEnumPumpTypeFilter<$PrismaModel> | $Enums.PumpType
   }
 
-  export type IntFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel>
-    in?: number[] | ListIntFieldRefInput<$PrismaModel>
-    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntFilter<$PrismaModel> | number
-  }
-
   export type DiagnosticReportNullableScalarRelationFilter = {
     is?: DiagnosticReportWhereInput | null
     isNot?: DiagnosticReportWhereInput | null
@@ -8876,22 +9062,6 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedEnumPumpTypeFilter<$PrismaModel>
     _max?: NestedEnumPumpTypeFilter<$PrismaModel>
-  }
-
-  export type IntWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel>
-    in?: number[] | ListIntFieldRefInput<$PrismaModel>
-    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
-    _count?: NestedIntFilter<$PrismaModel>
-    _avg?: NestedFloatFilter<$PrismaModel>
-    _sum?: NestedIntFilter<$PrismaModel>
-    _min?: NestedIntFilter<$PrismaModel>
-    _max?: NestedIntFilter<$PrismaModel>
   }
 
   export type EnumAlertTypeFilter<$PrismaModel = never> = {
@@ -9009,6 +9179,14 @@ export namespace Prisma {
 
   export type DateTimeFieldUpdateOperationsInput = {
     set?: Date | string
+  }
+
+  export type IntFieldUpdateOperationsInput = {
+    set?: number
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
   }
 
   export type CropRecipeUpdateOneWithoutAssignedDevicesNestedInput = {
@@ -9239,14 +9417,6 @@ export namespace Prisma {
     set?: $Enums.PumpType
   }
 
-  export type IntFieldUpdateOperationsInput = {
-    set?: number
-    increment?: number
-    decrement?: number
-    multiply?: number
-    divide?: number
-  }
-
   export type DeviceUpdateOneRequiredWithoutDosingLogsNestedInput = {
     create?: XOR<DeviceCreateWithoutDosingLogsInput, DeviceUncheckedCreateWithoutDosingLogsInput>
     connectOrCreate?: DeviceCreateOrConnectWithoutDosingLogsInput
@@ -9327,6 +9497,17 @@ export namespace Prisma {
     not?: NestedDateTimeFilter<$PrismaModel> | Date | string
   }
 
+  export type NestedIntFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntFilter<$PrismaModel> | number
+  }
+
   export type NestedStringWithAggregatesFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[] | ListStringFieldRefInput<$PrismaModel>
@@ -9342,17 +9523,6 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedStringFilter<$PrismaModel>
     _max?: NestedStringFilter<$PrismaModel>
-  }
-
-  export type NestedIntFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel>
-    in?: number[] | ListIntFieldRefInput<$PrismaModel>
-    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntFilter<$PrismaModel> | number
   }
 
   export type NestedStringNullableWithAggregatesFilter<$PrismaModel = never> = {
@@ -9403,6 +9573,22 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedDateTimeFilter<$PrismaModel>
     _max?: NestedDateTimeFilter<$PrismaModel>
+  }
+
+  export type NestedIntWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
+    _count?: NestedIntFilter<$PrismaModel>
+    _avg?: NestedFloatFilter<$PrismaModel>
+    _sum?: NestedIntFilter<$PrismaModel>
+    _min?: NestedIntFilter<$PrismaModel>
+    _max?: NestedIntFilter<$PrismaModel>
   }
 
   export type NestedFloatFilter<$PrismaModel = never> = {
@@ -9529,22 +9715,6 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedEnumPumpTypeFilter<$PrismaModel>
     _max?: NestedEnumPumpTypeFilter<$PrismaModel>
-  }
-
-  export type NestedIntWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel>
-    in?: number[] | ListIntFieldRefInput<$PrismaModel>
-    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
-    _count?: NestedIntFilter<$PrismaModel>
-    _avg?: NestedFloatFilter<$PrismaModel>
-    _sum?: NestedIntFilter<$PrismaModel>
-    _min?: NestedIntFilter<$PrismaModel>
-    _max?: NestedIntFilter<$PrismaModel>
   }
 
   export type NestedEnumAlertTypeFilter<$PrismaModel = never> = {
@@ -9832,6 +10002,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     diagnosticReports?: DiagnosticReportCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertCreateNestedManyWithoutDeviceInput
@@ -9843,6 +10017,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     diagnosticReports?: DiagnosticReportUncheckedCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogUncheckedCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertUncheckedCreateNestedManyWithoutDeviceInput
@@ -9884,6 +10062,10 @@ export namespace Prisma {
     isOnline?: BoolFilter<"Device"> | boolean
     createdAt?: DateTimeFilter<"Device"> | Date | string
     activeRecipeId?: StringNullableFilter<"Device"> | string | null
+    circulationMode?: StringFilter<"Device"> | string
+    circRunMin?: IntFilter<"Device"> | number
+    circRestMin?: IntFilter<"Device"> | number
+    circUpdatedAt?: DateTimeFilter<"Device"> | Date | string
   }
 
   export type DeviceCreateWithoutDiagnosticReportsInput = {
@@ -9892,6 +10074,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     activeRecipe?: CropRecipeCreateNestedOneWithoutAssignedDevicesInput
     dosingLogs?: DosingLogCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertCreateNestedManyWithoutDeviceInput
@@ -9904,6 +10090,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: Date | string
     activeRecipeId?: string | null
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     dosingLogs?: DosingLogUncheckedCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertUncheckedCreateNestedManyWithoutDeviceInput
   }
@@ -9962,6 +10152,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipe?: CropRecipeUpdateOneWithoutAssignedDevicesNestedInput
     dosingLogs?: DosingLogUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUpdateManyWithoutDeviceNestedInput
@@ -9974,6 +10168,10 @@ export namespace Prisma {
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipeId?: NullableStringFieldUpdateOperationsInput | string | null
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     dosingLogs?: DosingLogUncheckedUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUncheckedUpdateManyWithoutDeviceNestedInput
   }
@@ -10000,6 +10198,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     activeRecipe?: CropRecipeCreateNestedOneWithoutAssignedDevicesInput
     diagnosticReports?: DiagnosticReportCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertCreateNestedManyWithoutDeviceInput
@@ -10012,6 +10214,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: Date | string
     activeRecipeId?: string | null
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     diagnosticReports?: DiagnosticReportUncheckedCreateNestedManyWithoutDeviceInput
     alerts?: SystemAlertUncheckedCreateNestedManyWithoutDeviceInput
   }
@@ -10069,6 +10275,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipe?: CropRecipeUpdateOneWithoutAssignedDevicesNestedInput
     diagnosticReports?: DiagnosticReportUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUpdateManyWithoutDeviceNestedInput
@@ -10081,6 +10291,10 @@ export namespace Prisma {
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipeId?: NullableStringFieldUpdateOperationsInput | string | null
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     diagnosticReports?: DiagnosticReportUncheckedUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUncheckedUpdateManyWithoutDeviceNestedInput
   }
@@ -10128,6 +10342,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     activeRecipe?: CropRecipeCreateNestedOneWithoutAssignedDevicesInput
     diagnosticReports?: DiagnosticReportCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogCreateNestedManyWithoutDeviceInput
@@ -10140,6 +10358,10 @@ export namespace Prisma {
     isOnline?: boolean
     createdAt?: Date | string
     activeRecipeId?: string | null
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
     diagnosticReports?: DiagnosticReportUncheckedCreateNestedManyWithoutDeviceInput
     dosingLogs?: DosingLogUncheckedCreateNestedManyWithoutDeviceInput
   }
@@ -10166,6 +10388,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipe?: CropRecipeUpdateOneWithoutAssignedDevicesNestedInput
     diagnosticReports?: DiagnosticReportUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUpdateManyWithoutDeviceNestedInput
@@ -10178,6 +10404,10 @@ export namespace Prisma {
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     activeRecipeId?: NullableStringFieldUpdateOperationsInput | string | null
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     diagnosticReports?: DiagnosticReportUncheckedUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUncheckedUpdateManyWithoutDeviceNestedInput
   }
@@ -10326,6 +10556,10 @@ export namespace Prisma {
     location?: string | null
     isOnline?: boolean
     createdAt?: Date | string
+    circulationMode?: string
+    circRunMin?: number
+    circRestMin?: number
+    circUpdatedAt?: Date | string
   }
 
   export type DeviceUpdateWithoutActiveRecipeInput = {
@@ -10334,6 +10568,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     diagnosticReports?: DiagnosticReportUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUpdateManyWithoutDeviceNestedInput
@@ -10345,6 +10583,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
     diagnosticReports?: DiagnosticReportUncheckedUpdateManyWithoutDeviceNestedInput
     dosingLogs?: DosingLogUncheckedUpdateManyWithoutDeviceNestedInput
     alerts?: SystemAlertUncheckedUpdateManyWithoutDeviceNestedInput
@@ -10356,6 +10598,10 @@ export namespace Prisma {
     location?: NullableStringFieldUpdateOperationsInput | string | null
     isOnline?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
+    circulationMode?: StringFieldUpdateOperationsInput | string
+    circRunMin?: IntFieldUpdateOperationsInput | number
+    circRestMin?: IntFieldUpdateOperationsInput | number
+    circUpdatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type DosingLogCreateManyDiagnosticReportInput = {
