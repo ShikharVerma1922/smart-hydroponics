@@ -36,12 +36,12 @@ export const initMQTTHandler = ()=>{
                     water_level_pct: parseFloat(rawSensors.water_level_pct ?? rawSensors.level ?? 100.0),
                 },
                 circulation_pump_state: data.circulation_pump_state || 'ON',
-                lastUpdated: new Date().toISOString(),
+                timestamp: new Date().toISOString(),
                 };
 
-                await recordTelemetry(data);
-                emitTelemetryUpdate(data);
-                await handleIncomingTelemetry(data);
+                await recordTelemetry(latestTelemetryCache);
+                emitTelemetryUpdate(latestTelemetryCache);
+                await handleIncomingTelemetry(latestTelemetryCache);
             }
         } catch (error) {
             console.error("  MQTT parsing error",error.message);
