@@ -6,25 +6,25 @@ import { io } from 'socket.io-client';
 const SOCKET_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3000';
 
 // Global simulation event bus
-const globalSimBus = {
-  listeners: new Map(),
-  on(event, callback) {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event).add(callback);
-    return () => this.listeners.get(event)?.delete(callback);
-  },
-  emit(event, data) {
-    this.listeners.get(event)?.forEach((fn) => fn(data));
-  },
-};
+// const globalSimBus = {
+//   listeners: new Map(),
+//   on(event, callback) {
+//     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+//     this.listeners.get(event).add(callback);
+//     return () => this.listeners.get(event)?.delete(callback);
+//   },
+//   emit(event, data) {
+//     this.listeners.get(event)?.forEach((fn) => fn(data));
+//   },
+// };
 
 /**
  * Core socket hook — manages a single shared connection.
  * Returns the socket instance and connection metadata.
  */
 export function useSocket() {
-  const socketRef = useRef(null);
-  const [isConnected, setIsConnected] = useState(true);
+  const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [latencyMs, setLatencyMs] = useState(18);
   const [lastPing, setLastPing] = useState(new Date());
   const [isSimulated, setIsSimulated] = useState(true);
@@ -40,51 +40,49 @@ export function useSocket() {
         timeout: 3000,
       });
 
-      socketRef.current = socket;
-
       socket.on('connect', () => {
+        setSocket(socket);
         setIsConnected(true);
         setIsSimulated(false);
         setLastPing(new Date());
       });
 
       socket.on('disconnect', () => {
-        setIsConnected(true);
+        setIsConnected(false);
         setIsSimulated(true);
       });
-    } catch (e) {
-      setIsConnected(true);
-      setIsSimulated(true);
+    } catch (error) {
+      console.error('Unable to initialize Socket.IO connection:', error);
     }
 
     // Live Simulated Heartbeat & Telemetry Generation
-    const interval = setInterval(() => {
-      const randomLatency = Math.floor(14 + Math.random() * 14);
-      setLatencyMs(randomLatency);
-      setLastPing(new Date());
+    // const interval = setInterval(() => {
+    //   const randomLatency = Math.floor(14 + Math.random() * 14);
+    //   setLatencyMs(randomLatency);
+    //   setLastPing(new Date());
 
-      const time = Date.now();
-      const phDrift = 6.22 + (Math.sin(time / 15000) * 0.08) + (Math.random() * 0.02 - 0.01);
-      const ecDrift = 1.45 + (Math.cos(time / 18000) * 0.05) + (Math.random() * 0.02 - 0.01);
-      const waterTempDrift = 22.4 + (Math.sin(time / 30000) * 0.3);
-      const waterLevel = 82;
+    //   const time = Date.now();
+    //   const phDrift = 6.22 + (Math.sin(time / 15000) * 0.08) + (Math.random() * 0.02 - 0.01);
+    //   const ecDrift = 1.45 + (Math.cos(time / 18000) * 0.05) + (Math.random() * 0.02 - 0.01);
+    //   const waterTempDrift = 22.4 + (Math.sin(time / 30000) * 0.3);
+    //   const waterLevel = 82;
 
-      globalSimBus.emit('telemetry:update', {
-        timestamp: new Date().toISOString(),
-        deviceId: 'esp32_node_01',
-        sensors: {
-          ph: +phDrift.toFixed(2),
-          ec_ms_cm: +ecDrift.toFixed(2),
-          water_temp_c: +waterTempDrift.toFixed(1),
-          water_level_pct: waterLevel,
-          air_temp_c: 24.8,
-          humidity_pct: 62,
-        },
-      });
-    }, 2500);
+    //   globalSimBus.emit('telemetry:update', {
+    //     timestamp: new Date().toISOString(),
+    //     deviceId: 'esp32_node_01',
+    //     sensors: {
+    //       ph: +phDrift.toFixed(2),
+    //       ec_ms_cm: +ecDrift.toFixed(2),
+    //       water_temp_c: +waterTempDrift.toFixed(1),
+    //       water_level_pct: waterLevel,
+    //       air_temp_c: 24.8,
+    //       humidity_pct: 62,
+    //     },
+    //   });
+    // }, 2500);
 
     return () => {
-      clearInterval(interval);
+      // clearInterval(interval);
       if (socket) socket.disconnect();
     };
   }, []);
@@ -94,7 +92,7 @@ export function useSocket() {
   };
 
   return {
-    socket: socketRef.current,
+    socket,
     isConnected,
     latencyMs,
     lastPing,
@@ -107,41 +105,33 @@ export function useSocket() {
  * Subscribe to a specific socket event. Calls handler on each event.
  */
 export function useSocketEvent(socket, eventName, handler) {
-  const handlerRef = useRef(handler);
-  handlerRef.current = handler;
-
   useEffect(() => {
-    const listener = (data) => handlerRef.current(data);
+    if (!socket) return;
 
-    // Listen to real socket if available
-    if (socket) {
-      socket.on(eventName, listener);
-    }
-
-    // Also listen to simulated bus
-    const unsubscribe = globalSimBus.on(eventName, listener);
+    socket.on(eventName, handler);
 
     return () => {
-      if (socket) socket.off(eventName, listener);
-      unsubscribe();
+      socket.off(eventName, handler);
     };
-  }, [socket, eventName]);
+  }, [socket, eventName, handler]);
 }
 
 /**
  * Telemetry stream hook — accumulates sensor data points in a ring buffer
  */
-export function useTelemetryStream(socket, maxPoints = 100) {
+export function useTelemetryStream(socket, maxPoints = 100, deviceId = null) {
   const [latest, setLatest] = useState(null);
   const [buffer, setBuffer] = useState([]);
 
   useSocketEvent(socket, 'telemetry:update', useCallback((data) => {
+    if (deviceId && data.deviceId !== deviceId) return;
     setLatest(data);
     setBuffer((prev) => {
-      const next = [...prev, { ...data.sensors, timestamp: data.timestamp }];
+      const devicePoints = prev.filter((point) => point.deviceId === data.deviceId);
+      const next = [...devicePoints, { ...data.sensors, deviceId: data.deviceId, timestamp: data.timestamp }];
       return next.length > maxPoints ? next.slice(-maxPoints) : next;
     });
-  }, [maxPoints]));
+  }, [deviceId, maxPoints]));
 
   return { latest, buffer };
 }
@@ -223,12 +213,13 @@ export function useSystemAlerts(socket) {
 /**
  * Device heartbeat (online/offline transitions)
  */
-export function useDeviceHeartbeat(socket) {
+export function useDeviceHeartbeat(socket, deviceId) {
   const [heartbeat, setHeartbeat] = useState(null);
 
   useSocketEvent(socket, 'device:heartbeat', useCallback((data) => {
-    setHeartbeat(data);
-  }, []));
+    if (data.deviceId === deviceId) setHeartbeat(data);
+    console.log(data)
+  }, [deviceId]));
 
   return heartbeat;
 }

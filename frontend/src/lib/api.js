@@ -26,14 +26,28 @@ async function request(endpoint, options = {}) {
 }
 
 // ── Telemetry ──
+// ── Telemetry ──
 export const telemetryAPI = {
   getLatest: (deviceId = 'esp32_node_01') =>
-    request(`/api/telemetry/latest?deviceId=${deviceId}`),
+    request(
+      `/api/telemetry/latest?deviceId=${encodeURIComponent(deviceId)}`
+    ),
 
-  getHistory: (deviceId = 'esp32_node_01', range = '6h', interval = '5m') =>
-    request(`/api/telemetry/history?deviceId=${deviceId}&range=${range}&interval=${interval}`),
+  getHistory: (
+    deviceId = 'esp32_node_01',
+    range = '6h',
+    interval = '5m'
+  ) =>
+    request(
+      `/api/telemetry/history?deviceId=${encodeURIComponent(
+        deviceId
+      )}&range=${encodeURIComponent(
+        range
+      )}&interval=${encodeURIComponent(interval)}`
+    ),
 };
 
+// ── Actuators ──
 // ── Actuators ──
 export const actuatorAPI = {
   manualPulse: (deviceId, pumpType, durationMs) =>
@@ -47,6 +61,11 @@ export const actuatorAPI = {
       method: 'POST',
       body: JSON.stringify({ deviceId, mode, runMin, restMin }),
     }),
+
+  getCirculation: (deviceId = 'esp32_node_01') =>
+    request(
+      `/api/actuators/circulation/${encodeURIComponent(deviceId)}`
+    ),
 };
 
 // ── Dosing Logs ──
@@ -121,3 +140,5 @@ export function getUploadUrl(relativePath) {
   if (relativePath.startsWith('http')) return relativePath;
   return `${API_BASE}${relativePath}`;
 }
+
+

@@ -130,14 +130,22 @@ export default function ArchiveModal({ isOpen, onClose, deviceId }) {
                       Selected Scan Deep Metadata Inspector
                     </div>
 
-                    {selectedScan.imageUrl && (
-                      <img
-                        className="archive-detail__image"
-                        src={getUploadUrl(selectedScan.imageUrl)}
-                        alt="Canopy scan"
-                      />
-                    )}
-
+                   {selectedScan.imageUrl && (
+  <img
+    className="archive-detail__image"
+    src={getUploadUrl(selectedScan.imageUrl)}
+    alt="Canopy scan"
+    style={{
+      width: '100%',
+      height: 'auto',
+      maxHeight: '420px',
+      objectFit: 'contain',
+      display: 'block',
+      background: 'var(--bg-input)',
+      borderRadius: 8,
+    }}
+  />
+)}
                     <div className="archive-detail__section">
                       <div className="archive-detail__section-title">Inference Performance Metadata</div>
                       <div className="archive-detail__meta-grid">

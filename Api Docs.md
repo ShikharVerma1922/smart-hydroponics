@@ -34,7 +34,7 @@ Fetches the most recent cached electrochemical sensor metrics and circulation st
 {
   "success": true,
   "data": {
-    "device_id": "esp32_node_01",
+    "deviceId": "esp32_node_01",
     "timestamp": 1724486400000,
     "sensors": {
       "ph": 6.32,

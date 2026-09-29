@@ -22,70 +22,48 @@ const SOURCE_BADGE_MAP = {
 // Estimate volume from duration (rough: 1.7 mL/sec)
 const estimateVolume = (durationMs) => ((durationMs / 1000) * 1.7).toFixed(1);
 
-const ALL_DEMO_LOGS = [
-  { id: '1', timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString(), pumpType: 'NUTRIENT_A', durationMs: 4000, source: 'ML_BIASED', rationale: 'Nitrogen deficiency detected (94.2% conf). A-biased pulse.', diagnosticReportId: 'rep_0042' },
-  { id: '2', timestamp: new Date(Date.now() - 1000 * 60 * 8 + 15000).toISOString(), pumpType: 'NUTRIENT_B', durationMs: 2000, source: 'ML_BIASED', rationale: 'Secondary Part B pulse after 15s sequential anti-precipitation delay.', diagnosticReportId: 'rep_0042' },
-  { id: '3', timestamp: new Date(Date.now() - 1000 * 60 * 35).toISOString(), pumpType: 'PH_DOWN', durationMs: 2500, source: 'AUTONOMOUS_PH', rationale: 'Routine high pH drift (pH 6.64 > 6.50 target threshold).' },
-  { id: '4', timestamp: new Date(Date.now() - 1000 * 60 * 72).toISOString(), pumpType: 'NUTRIENT_A', durationMs: 2500, source: 'AUTONOMOUS_EC', rationale: 'Standard 1:1 replenishment pulse (EC 1.14 mS/cm < 1.20 min band).' },
-  { id: '5', timestamp: new Date(Date.now() - 1000 * 60 * 72 + 15000).toISOString(), pumpType: 'NUTRIENT_B', durationMs: 2500, source: 'AUTONOMOUS_EC', rationale: 'Standard 1:1 replenishment Part B pulse (EC balanced).' },
-  { id: '6', timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(), pumpType: 'PH_DOWN', durationMs: 2000, source: 'AUTONOMOUS_PH', rationale: 'pH drift correction pulse.' },
-  { id: '7', timestamp: new Date(Date.now() - 1000 * 60 * 165).toISOString(), pumpType: 'NUTRIENT_B', durationMs: 4000, source: 'ML_BIASED', rationale: 'Phosphorus deficiency detected. Stock B exclusive pulse (Monopotassium).', diagnosticReportId: 'rep_0038' },
-  { id: '8', timestamp: new Date(Date.now() - 1000 * 60 * 220).toISOString(), pumpType: 'NUTRIENT_A', durationMs: 2500, source: 'AUTONOMOUS_EC', rationale: 'Autonomous nutrient EC restoration.' },
-  { id: '9', timestamp: new Date(Date.now() - 1000 * 60 * 280).toISOString(), pumpType: 'PH_DOWN', durationMs: 1500, source: 'MANUAL_OVERRIDE', rationale: 'Operator manual pump priming and line flush.' },
-  { id: '10', timestamp: new Date(Date.now() - 1000 * 60 * 340).toISOString(), pumpType: 'NUTRIENT_A', durationMs: 4000, source: 'ML_BIASED', rationale: 'Calcium deficiency diagnosis. Stock A boost.', diagnosticReportId: 'rep_0035' },
-  { id: '11', timestamp: new Date(Date.now() - 1000 * 60 * 410).toISOString(), pumpType: 'NUTRIENT_B', durationMs: 4000, source: 'ML_BIASED', rationale: 'Magnesium deficiency diagnosis. Stock B boost.', diagnosticReportId: 'rep_0031' },
-  { id: '12', timestamp: new Date(Date.now() - 1000 * 60 * 480).toISOString(), pumpType: 'PH_DOWN', durationMs: 2500, source: 'AUTONOMOUS_PH', rationale: 'Night-cycle alkaline buffering pulse.' },
-  { id: '13', timestamp: new Date(Date.now() - 1000 * 60 * 550).toISOString(), pumpType: 'NUTRIENT_A', durationMs: 2500, source: 'AUTONOMOUS_EC', rationale: 'Autonomous EC maintenance.' },
-  { id: '14', timestamp: new Date(Date.now() - 1000 * 60 * 550 + 15000).toISOString(), pumpType: 'NUTRIENT_B', durationMs: 2500, source: 'AUTONOMOUS_EC', rationale: 'Autonomous EC maintenance sequence.' },
-  { id: '15', timestamp: new Date(Date.now() - 1000 * 60 * 620).toISOString(), pumpType: 'PH_DOWN', durationMs: 1500, source: 'MANUAL_OVERRIDE', rationale: 'Reservoir refresh calibration injection.' },
-];
-
 export default function DosingLog({ deviceId, newLogEntry }) {
-  const [allLogs, setAllLogs] = useState(ALL_DEMO_LOGS);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [loading, setLoading] = useState(false);
   const pageSize = 5;
+  const [logs, setLogs] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1, limit: pageSize });
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [loading, setLoading] = useState(true);
+  const socketLog = newLogEntry?.deviceId === deviceId ? newLogEntry.log : null;
+  const socketLogMatchesFilter = socketLog && (!sourceFilter || socketLog.source === sourceFilter);
+  const hasUnfetchedSocketLog = socketLogMatchesFilter && !logs.some((log) => log.id === socketLog.id);
+  const totalCount = pagination.total + (hasUnfetchedSocketLog ? 1 : 0);
+  const totalPages = Math.max(1, pagination.pages, Math.ceil(totalCount / pageSize));
+  const currentLogs = currentPage === 1 && hasUnfetchedSocketLog
+    ? [socketLog, ...logs].slice(0, pageSize)
+    : logs;
 
-  // Filter logs by source if filter applied
-  const filteredLogs = sourceFilter
-    ? allLogs.filter((l) => l.source === sourceFilter)
-    : allLogs;
+  useEffect(() => {
+    let isCurrent = true;
 
-  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
-  
-  // Slice logs for current page view
-  const currentLogs = filteredLogs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  const fetchLogs = async (page = 1) => {
-    setCurrentPage(page);
-    try {
-      const params = { deviceId, page, limit: pageSize };
-      if (sourceFilter) params.source = sourceFilter;
-      const res = await dosingAPI.getLogs(params);
-      if (res.data && res.data.length > 0) {
-        setAllLogs(res.data);
+    const loadLogs = async () => {
+      try {
+        const params = { deviceId, page: currentPage, limit: pageSize };
+        if (sourceFilter) params.source = sourceFilter;
+        const res = await dosingAPI.getLogs(params);
+        if (!isCurrent) return;
+        setLogs(res.data || []);
+        setPagination(res.pagination || { total: 0, page: currentPage, pages: 1, limit: pageSize });
+      } catch {
+        if (isCurrent) {
+          setLogs([]);
+          setPagination({ total: 0, page: currentPage, pages: 1, limit: pageSize });
+        }
+      } finally {
+        if (isCurrent) setLoading(false);
       }
-    } catch (err) {
-      // Keep interactive local dataset when backend is offline
-    }
-  };
+    };
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [sourceFilter]);
-
-  // Prepend new entries from WebSocket
-  useEffect(() => {
-    if (newLogEntry?.log) {
-      setLogs((prev) => [newLogEntry.log, ...prev].slice(0, pagination.limit));
-      setPagination((prev) => ({ ...prev, total: prev.total + 1 }));
-    }
-  }, [newLogEntry]);
-
-  const isRecent = (timestamp) => {
-    return Date.now() - new Date(timestamp).getTime() < 60000;
-  };
+    loadLogs();
+    return () => {
+      isCurrent = false;
+    };
+  }, [deviceId, currentPage, sourceFilter]);
 
   const handleExport = () => {
     // Build CSV
@@ -118,7 +96,12 @@ export default function DosingLog({ deviceId, newLogEntry }) {
               <button
                 key={f.value}
                 className={`log-filter ${sourceFilter === f.value ? 'log-filter--active' : ''}`}
-                onClick={() => setSourceFilter(f.value)}
+                onClick={() => {
+                  if (sourceFilter === f.value) return;
+                  setLoading(true);
+                  setCurrentPage(1);
+                  setSourceFilter(f.value);
+                }}
               >
                 {f.label}
               </button>
@@ -171,7 +154,6 @@ export default function DosingLog({ deviceId, newLogEntry }) {
               currentLogs.map((log) => (
                 <tr key={log.id}>
                   <td className="log-table__timestamp">
-                    {isRecent(log.timestamp) && <span className="log-table__recent-dot" />}
                     {format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}
                   </td>
                   <td>{formatPumpType(log.pumpType)}</td>
@@ -204,14 +186,17 @@ export default function DosingLog({ deviceId, newLogEntry }) {
       {/* Pagination Controls */}
       <div className="pagination">
         <div className="pagination__info">
-          Showing {filteredLogs.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}-
-          {Math.min(currentPage * pageSize, filteredLogs.length)} of {filteredLogs.length} events
+          Showing {totalCount > 0 ? (currentPage - 1) * pageSize + 1 : 0}-
+          {Math.min(currentPage * pageSize, totalCount)} of {totalCount} events
         </div>
         <div className="pagination__controls">
           <button
             className="pagination__btn"
             disabled={currentPage <= 1}
-            onClick={() => fetchLogs(currentPage - 1)}
+            onClick={() => {
+              setLoading(true);
+              setCurrentPage(currentPage - 1);
+            }}
             id="pagination-prev"
           >
             ‹ Previous
@@ -220,7 +205,11 @@ export default function DosingLog({ deviceId, newLogEntry }) {
             <button
               key={p}
               className={`pagination__btn ${currentPage === p ? 'pagination__btn--active' : ''}`}
-              onClick={() => fetchLogs(p)}
+              onClick={() => {
+                if (currentPage === p) return;
+                setLoading(true);
+                setCurrentPage(p);
+              }}
               id={`pagination-page-${p}`}
             >
               {p}
@@ -229,7 +218,10 @@ export default function DosingLog({ deviceId, newLogEntry }) {
           <button
             className="pagination__btn"
             disabled={currentPage >= totalPages}
-            onClick={() => fetchLogs(currentPage + 1)}
+            onClick={() => {
+              setLoading(true);
+              setCurrentPage(currentPage + 1);
+            }}
             id="pagination-next"
           >
             Next ›

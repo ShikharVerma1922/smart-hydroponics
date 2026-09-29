@@ -103,7 +103,7 @@ router.get('/status', async (req, res) => {
  */
 router.put('/alerts/:id/resolve', async (req, res) => {
   const { id } = req.params;
-  const { resolvedBy = 'USER' } = req.body;
+  const { resolvedBy = 'USER' } = req.body
 
   try {
     const alert = await prisma.systemAlert.update({

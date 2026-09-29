@@ -8,7 +8,7 @@ const TELEMETRY_TOPIC = 'hydro/+/telemetry';
 
 // in memory cache
 export let latestTelemetryCache = {
-  device_id: 'esp32_node_01',
+  deviceId: 'esp32_node_01',
   sensors: { ph: 7.0, ec_ms_cm: 0.0, water_temp_c: 24.0, water_level_pct: 100 },
   circulation_pump_state: 'ON',
   lastUpdated: null,
@@ -24,16 +24,17 @@ export const initMQTTHandler = ()=>{
             if(topic.endsWith('/telemetry')){
                 const data = JSON.parse(message.toString());
                const rawSensors = data.sensors || data;
-
                await recordHeartbeat(data.device_id);
 
                 latestTelemetryCache = {
-                device_id: data.device_id || 'esp32_node_01',
+                deviceId: data.device_id || 'esp32_node_01',
                 sensors: {
                     ph: parseFloat(rawSensors.ph ?? 7.0),
                     ec_ms_cm: parseFloat(rawSensors.ec_ms_cm ?? rawSensors.ec ?? 0.0),
                     water_temp_c: parseFloat(rawSensors.water_temp_c ?? rawSensors.temp ?? 24.0),
                     water_level_pct: parseFloat(rawSensors.water_level_pct ?? rawSensors.level ?? 100.0),
+                    air_temp_c: rawSensors.air_temp_c != null ? parseFloat(rawSensors.air_temp_c) : null,
+                    humidity_pct: rawSensors.humidity_pct != null ? parseFloat(rawSensors.humidity_pct) : null,
                 },
                 circulation_pump_state: data.circulation_pump_state || 'ON',
                 timestamp: new Date().toISOString(),

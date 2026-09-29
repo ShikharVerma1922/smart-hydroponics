@@ -137,7 +137,8 @@ export function ArcGauge({ value, min, max, label, unit, color = 'var(--accent-c
  * rising bubbles, glass refraction highlight, and thermal status.
  */
 export function WaterGauge({ percentage = 0, waterTemp }) {
-  const fillHeight = Math.max(5, Math.min(100, percentage));
+  const hasPercentage = Number.isFinite(percentage);
+  const fillHeight = hasPercentage ? Math.max(5, Math.min(100, percentage)) : 0;
   
   // Temp status color
   const getTempColor = (t) => {
@@ -150,7 +151,7 @@ export function WaterGauge({ percentage = 0, waterTemp }) {
   };
 
   const tempColor = getTempColor(waterTemp);
-  const isLow = percentage < 20;
+  const isLow = hasPercentage && percentage < 20;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
@@ -182,7 +183,7 @@ export function WaterGauge({ percentage = 0, waterTemp }) {
 
         {/* Dynamic percentage readout */}
         <div className="water-tank__label">
-          <span className="water-tank__percent">{Math.round(percentage)}</span>
+          <span className="water-tank__percent">{hasPercentage ? Math.round(percentage) : '—'}</span>
           <span className="water-tank__symbol">%</span>
         </div>
 

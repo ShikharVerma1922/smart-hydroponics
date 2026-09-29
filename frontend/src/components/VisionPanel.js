@@ -17,7 +17,8 @@ export default function VisionPanel({ deviceId, latestReport, onOpenArchive, coo
   const [previewUrl, setPreviewUrl] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [report, setReport] = useState(latestReport);
+  const [analyzedReport, setAnalyzedReport] = useState(null);
+  const report = analyzedReport || latestReport;
   const fileInputRef = useRef(null);
 
   const handleFileSelect = (e) => {
@@ -37,7 +38,7 @@ export default function VisionPanel({ deviceId, latestReport, onOpenArchive, coo
     setAnalyzing(true);
     try {
       const result = await visionAPI.analyze(deviceId, selectedFile);
-      setReport(result.data);
+      setAnalyzedReport(result.data);
     } catch (err) {
       console.error('Vision analysis failed:', err);
     } finally {
@@ -117,7 +118,7 @@ export default function VisionPanel({ deviceId, latestReport, onOpenArchive, coo
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}
               id="open-archive-btn"
             >
-              View Archive ({scanCount} Scans) <ExternalLink size={11} />
+              View Archive <ExternalLink size={11} />
             </button>
           </div>
 
@@ -170,27 +171,39 @@ export default function VisionPanel({ deviceId, latestReport, onOpenArchive, coo
                 </div>
               )}
 
-              {/* Foliar Recovery Lock */}
-              {(cooldown?.isActive || report.cooldownActiveTill) && (
-                <div className="insight-box insight-box--lock">
-                  <Lock size={16} style={{ marginTop: 2, flexShrink: 0, color: 'var(--accent-amber)' }} />
-                  <div>
-                    <strong>Foliar Recovery Lock: </strong>
-                    <span className="accent">Active.</span> Previous foliar intervention{' '}
-                    <span className="accent">
-                      {cooldown?.remainingHours
-                        ? `${(48 - cooldown.remainingHours).toFixed(0)}h`
-                        : '—'}
-                    </span>{' '}
-                    ago. Next diagnostic intervention permitted in{' '}
-                    <span className="accent">
-                      {cooldown?.remainingHours
-                        ? `${Math.floor(cooldown.remainingHours)}h ${Math.round((cooldown.remainingHours % 1) * 60)}m`
-                        : '—'}
-                    </span>
-                  </div>
-                </div>
-              )}
+             {/* Foliar Recovery Lock */}
+{cooldown?.isActive && (
+  <div className="insight-box insight-box--lock">
+    <Lock
+      size={16}
+      style={{
+        marginTop: 2,
+        flexShrink: 0,
+        color: 'var(--accent-amber)',
+      }}
+    />
+
+    <div>
+      <strong>Foliar Recovery Lock: </strong>
+      <span className="accent">Active.</span>{' '}
+      Previous intervention was{' '}
+      <span className="accent">
+        {cooldown.remainingHours
+          ? `${(48 - cooldown.remainingHours).toFixed(0)}h`
+          : '—'}
+      </span>{' '}
+      ago. New interventions are locked for{' '}
+      <span className="accent">
+        {cooldown.remainingHours
+          ? `${Math.floor(cooldown.remainingHours)}h ${Math.round(
+              (cooldown.remainingHours % 1) * 60
+            )}m`
+          : '—'}
+      </span>
+      .
+    </div>
+  </div>
+)}
             </>
           ) : (
             <div style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>

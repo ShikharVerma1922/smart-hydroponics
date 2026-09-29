@@ -26,33 +26,29 @@ import {
 
 import { telemetryAPI, systemAPI, visionAPI, cropAPI } from '@/lib/api';
 
+const DEMO_SENSORS = {
+  ph: 6.22,
+  ec_ms_cm: 1.45,
+  water_temp_c: 22.4,
+  water_level_pct: 82,
+};
+const DEMO_CLIMATE = { air_temp_c: 24.8, humidity_pct: 62 };
+const DEMO_PH_HISTORY = [6.18, 6.15, 6.20, 6.22, 6.19, 6.24, 6.21, 6.18, 6.22, 6.25, 6.20, 6.22, 6.27, 6.24, 6.22];
+const DEMO_EC_HISTORY = [1.42, 1.40, 1.43, 1.45, 1.44, 1.46, 1.45, 1.43, 1.45, 1.44, 1.42, 1.45, 1.47, 1.46, 1.45];
+
 export default function Dashboard() {
   // ── Device selector ──
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('esp32_node_01');
 
-  // ── Demo fallback data (shown when backend is unavailable) ──
-  const DEMO_SENSORS = {
-    ph: 6.22,
-    ec_ms_cm: 1.45,
-    water_temp_c: 22.4,
-    water_level_pct: 82,
-  };
-  const DEMO_CLIMATE = { air_temp_c: 24.8, humidity_pct: 62 };
-  const DEMO_PH_HISTORY = [6.18, 6.15, 6.20, 6.22, 6.19, 6.24, 6.21, 6.18, 6.22, 6.25, 6.20, 6.22, 6.27, 6.24, 6.22];
-  const DEMO_EC_HISTORY = [1.42, 1.40, 1.43, 1.45, 1.44, 1.46, 1.45, 1.43, 1.45, 1.44, 1.42, 1.45, 1.47, 1.46, 1.45];
-
   // ── Telemetry state ──
-  const [sensors, setSensors] = useState(DEMO_SENSORS);
-  const [climate, setClimate] = useState(DEMO_CLIMATE);
-  const [phHistory, setPhHistory] = useState(DEMO_PH_HISTORY);
-  const [ecHistory, setEcHistory] = useState(DEMO_EC_HISTORY);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [telemetrySnapshot, setTelemetrySnapshot] = useState({ deviceId: null, sensors: null });
+  const [historySnapshot, setHistorySnapshot] = useState({ deviceId: null, ph: [], ec: [], air: [], humidity: [] });
 
   // ── System state ──
-  const [systemStatus, setSystemStatus] = useState(null);
-  const [latestReport, setLatestReport] = useState(null);
-  const [recipe, setRecipe] = useState(null);
+  const [systemStatusSnapshot, setSystemStatusSnapshot] = useState({ deviceId: null, data: null });
+  const [latestReportSnapshot, setLatestReportSnapshot] = useState({ deviceId: null, data: null });
+  const [recipeSnapshot, setRecipeSnapshot] = useState({ deviceId: null, data: null });
 
   // ── UI state ──
   const [telemetryDrawerOpen, setTelemetryDrawerOpen] = useState(false);
@@ -62,13 +58,44 @@ export default function Dashboard() {
   const [isEmergencyActive, setIsEmergencyActive] = useState(false);
 
   // ── Socket.io & Simulation ──
-  const { socket, isConnected, latencyMs, lastPing, isSimulated, toggleSimulation } = useSocket();
-  const { latest: liveTelemetry, buffer: telemetryBuffer } = useTelemetryStream(socket);
+  const { socket, latencyMs, lastPing, isSimulated, toggleSimulation } = useSocket();
+  const { latest: liveTelemetry, buffer: telemetryBuffer } = useTelemetryStream(socket, 100, selectedDevice);
   const { lastLogged } = useDosingEvents(socket);
   const lockout = useLockoutState(socket);
   const { alerts, setAlerts } = useSystemAlerts(socket);
   const visionCooldown = useVisionCooldown(socket);
-  const heartbeat = useDeviceHeartbeat(socket);
+  const heartbeat = useDeviceHeartbeat(socket, selectedDevice);
+  const hasDeviceSnapshot = telemetrySnapshot.deviceId === selectedDevice;
+  const liveSensors = liveTelemetry?.deviceId === selectedDevice ? liveTelemetry.sensors : null;
+  const sensors = liveSensors || (hasDeviceSnapshot ? telemetrySnapshot.sensors : DEMO_SENSORS);
+  const climateSensors = liveSensors || (hasDeviceSnapshot ? telemetrySnapshot.sensors : null);
+  const climate = climateSensors
+    ? { air_temp_c: climateSensors.air_temp_c, humidity_pct: climateSensors.humidity_pct }
+    : DEMO_CLIMATE;
+  const deviceHistory = historySnapshot.deviceId === selectedDevice ? historySnapshot : null;
+  const livePoints = telemetryBuffer.filter((point) => point.deviceId === selectedDevice);
+  const phHistory = [
+    ...(deviceHistory?.ph.length ? deviceHistory.ph : DEMO_PH_HISTORY),
+    ...livePoints.map((point) => point.ph).filter(Number.isFinite),
+  ].slice(-20);
+  const ecHistory = [
+    ...(deviceHistory?.ec.length ? deviceHistory.ec : DEMO_EC_HISTORY),
+    ...livePoints.map((point) => point.ec_ms_cm).filter(Number.isFinite),
+  ].slice(-20);
+  const airHistory = [
+    ...(deviceHistory?.air || []),
+    ...livePoints.map((point) => point.air_temp_c).filter(Number.isFinite),
+  ].slice(-20);
+  const humidityHistory = [
+    ...(deviceHistory?.humidity || []),
+    ...livePoints.map((point) => point.humidity_pct).filter(Number.isFinite),
+  ].slice(-20);
+  const systemStatus = systemStatusSnapshot.deviceId === selectedDevice ? systemStatusSnapshot.data : null;
+  const deviceIsOnline = heartbeat?.deviceId === selectedDevice
+    ? heartbeat.isOnline
+    : systemStatus?.deviceStatus?.isOnline ?? false;
+  const latestReport = latestReportSnapshot.deviceId === selectedDevice ? latestReportSnapshot.data : null;
+  const recipe = recipeSnapshot.deviceId === selectedDevice ? recipeSnapshot.data : null;
 
   // ── Initial data fetch ──
   useEffect(() => {
@@ -79,57 +106,57 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    let isCurrent = true;
+
     // Fetch telemetry snapshot
     telemetryAPI.getLatest(selectedDevice)
       .then((res) => {
-        if (res.data?.sensors) {
-          setSensors(res.data.sensors);
-          setDataLoaded(true);
+        if (isCurrent && res.data?.sensors) {
+          setTelemetrySnapshot({ deviceId: selectedDevice, sensors: res.data.sensors });
         }
       })
-      .catch(() => {
-        // Keep demo data when backend is offline
-        if (!dataLoaded) {
-          setSensors(DEMO_SENSORS);
-          setClimate(DEMO_CLIMATE);
-        }
-      });
+      .catch(() => {});
+
+    telemetryAPI.getHistory(selectedDevice)
+      .then((res) => {
+        if (!isCurrent || !Array.isArray(res.data)) return;
+        setHistorySnapshot({
+          deviceId: selectedDevice,
+          ph: res.data.map((point) => point.ph).filter(Number.isFinite).slice(-20),
+          ec: res.data.map((point) => point.ec_ms_cm).filter(Number.isFinite).slice(-20),
+          air: res.data.map((point) => point.air_temp_c).filter(Number.isFinite).slice(-20),
+          humidity: res.data.map((point) => point.humidity_pct).filter(Number.isFinite).slice(-20),
+        });
+      })
+      .catch(() => {});
 
     // Fetch system status (alerts, lockouts)
     systemAPI.getStatus(selectedDevice)
       .then((res) => {
-        setSystemStatus(res);
+        if (!isCurrent) return;
+        setSystemStatusSnapshot({ deviceId: selectedDevice, data: res });
         if (res.activeAlerts) setAlerts(res.activeAlerts);
       })
       .catch(() => {});
 
     // Fetch latest vision report
     visionAPI.getLatest(selectedDevice)
-      .then((res) => setLatestReport(res.data))
+      .then((res) => {
+        if (isCurrent) setLatestReportSnapshot({ deviceId: selectedDevice, data: res.data });
+      })
       .catch(() => {});
 
     // Fetch crop recipe
     cropAPI.getRecipe(selectedDevice)
-      .then((res) => setRecipe(res.recipe))
+      .then((res) => {
+        if (isCurrent) setRecipeSnapshot({ deviceId: selectedDevice, data: res.recipe });
+      })
       .catch(() => {});
-  }, [selectedDevice]);
 
-  // ── Update sensors from live WebSocket stream ──
-  useEffect(() => {
-    if (liveTelemetry?.sensors) {
-      setSensors(liveTelemetry.sensors);
-      // Track climate data (air_temp_c, humidity_pct come in telemetry:update)
-      if (liveTelemetry.sensors.air_temp_c != null) {
-        setClimate({
-          air_temp_c: liveTelemetry.sensors.air_temp_c,
-          humidity_pct: liveTelemetry.sensors.humidity_pct,
-        });
-      }
-      // Build sparkline history
-      setPhHistory((prev) => [...prev, liveTelemetry.sensors.ph].slice(-20));
-      setEcHistory((prev) => [...prev, liveTelemetry.sensors.ec_ms_cm].slice(-20));
-    }
-  }, [liveTelemetry]);
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedDevice, setAlerts]);
 
   // ── Emergency Stop Lockout override ──
   const effectiveLockout = isEmergencyActive
@@ -188,14 +215,13 @@ export default function Dashboard() {
   };
 
   const phTrend = calcTrend(phHistory);
-
   return (
     <>
       <Navbar
         devices={devices}
         selectedDevice={selectedDevice}
         onDeviceChange={setSelectedDevice}
-        isConnected={isConnected}
+        isConnected={deviceIsOnline}
         latencyMs={latencyMs}
         lastPing={lastPing}
         onEmergencyStop={handleOpenEmergencyModal}
@@ -272,45 +298,47 @@ export default function Dashboard() {
           </div>
 
           {/* Ambient Climate */}
-          <div className="card gauge-card climate-card" id="gauge-climate">
+          {/* <div className="card gauge-card climate-card" id="gauge-climate">
             <div className="gauge-card__header">
               <span className="gauge-card__label">Ambient Climate</span>
             </div>
             <div className="climate-card__metrics">
               <div className="climate-card__metric">
                 <div className="climate-card__value">
-                  {climate.air_temp_c != null ? climate.air_temp_c.toFixed(1) : sensors.water_temp_c != null ? (sensors.water_temp_c + 2.4).toFixed(1) : '—'}
+                  {climate.air_temp_c != null ? climate.air_temp_c.toFixed(1) : '—'}
                   <span>°C</span>
                 </div>
                 <div className="climate-card__label">Air Temp</div>
               </div>
               <div className="climate-card__metric">
                 <div className="climate-card__value">
-                  {climate.humidity_pct != null ? climate.humidity_pct.toFixed(0) : '62'}
+                  {climate.humidity_pct != null ? climate.humidity_pct.toFixed(0) : '—'}
                   <span>%</span>
                 </div>
                 <div className="climate-card__label">Humidity</div>
               </div>
             </div>
             <div className="climate-card__sparklines">
-              <Sparkline data={phHistory.map((_, i) => 24 + Math.sin(i / 3) * 1.5)} width={60} height={24} color="var(--accent-cyan)" />
-              <Sparkline data={phHistory.map((_, i) => 62 + Math.cos(i / 4) * 3)} width={60} height={24} color="var(--accent-green)" />
+              <Sparkline data={airHistory} width={60} height={24} color="var(--accent-cyan)" />
+              <Sparkline data={humidityHistory} width={60} height={24} color="var(--accent-green)" />
             </div>
             <div className="gauge-card__range">
               <span>2 hr</span>
               <span>2 h</span>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* ── Time-Series Chart ── */}
         <TelemetryChart
           deviceId={selectedDevice}
+          liveBuffer={telemetryBuffer}
           onOpenTelemetryDrawer={() => setTelemetryDrawerOpen(true)}
         />
 
         {/* ── Canopy Vision & ML Diagnostics ── */}
         <VisionPanel
+          // key={selectedDevice}
           deviceId={selectedDevice}
           latestReport={latestReport}
           cooldown={effectiveCooldown}
@@ -318,13 +346,13 @@ export default function Dashboard() {
         />
 
         {/* ── Dosing Decision Matrix ── */}
-        <DosingMatrixPanel
+        {/* <DosingMatrixPanel
           sensors={sensors}
           targetEc={recipe ? { min: recipe.targetEcMin, max: recipe.targetEcMax } : { min: 1.2, max: 1.8 }}
-          mlDiagnosis={latestReport?.classification?.primary_label}
+          mlDiagnosis={latestReport?.primaryLabel}
           waterLevel={sensors?.water_level_pct}
           isMaintenanceMode={systemStatus?.isMaintenanceMode || false}
-        />
+        /> */}
 
         {/* ── Pump Controls ── */}
         <PumpControls
@@ -334,6 +362,7 @@ export default function Dashboard() {
 
         {/* ── Dosing Audit Log ── */}
         <DosingLog
+          key={selectedDevice}
           deviceId={selectedDevice}
           newLogEntry={lastLogged}
         />

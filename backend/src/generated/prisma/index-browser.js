@@ -126,7 +126,11 @@ exports.Prisma.DeviceScalarFieldEnum = {
   location: 'location',
   isOnline: 'isOnline',
   createdAt: 'createdAt',
-  activeRecipeId: 'activeRecipeId'
+  activeRecipeId: 'activeRecipeId',
+  circulationMode: 'circulationMode',
+  circRunMin: 'circRunMin',
+  circRestMin: 'circRestMin',
+  circUpdatedAt: 'circUpdatedAt'
 };
 
 exports.Prisma.CropRecipeScalarFieldEnum = {
@@ -229,7 +233,11 @@ exports.AlertType = exports.$Enums.AlertType = {
   OSMOTIC_TOXICITY: 'OSMOTIC_TOXICITY',
   LOW_WATER_LEVEL: 'LOW_WATER_LEVEL',
   BIOTIC_STRESS: 'BIOTIC_STRESS',
-  DESYNC_WARNING: 'DESYNC_WARNING'
+  DESYNC_WARNING: 'DESYNC_WARNING',
+  SENSOR_FAULT: 'SENSOR_FAULT',
+  ACTUATOR_COMMS_FAILURE: 'ACTUATOR_COMMS_FAILURE',
+  PARTIAL_DOSE: 'PARTIAL_DOSE',
+  DOSE_CAP_EXCEEDED: 'DOSE_CAP_EXCEEDED'
 };
 
 exports.Prisma.ModelName = {

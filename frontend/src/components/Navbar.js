@@ -42,7 +42,7 @@ export default function Navbar({
 
       <div className="navbar__brand">
         <Leaf size={18} />
-        Smart Hydroponics Core
+        Smart Hydroponics System
       </div>
 
       <div className="navbar__device-select">
@@ -75,12 +75,12 @@ export default function Navbar({
         </button>
 
         {/* WebSocket Latency */}
-        <span className="pill pill--latency" id="status-latency-pill">
+        {/* <span className="pill pill--latency" id="status-latency-pill">
           WebSocket latency{' '}
           <strong style={{ color: 'var(--accent-cyan)', marginLeft: 3 }}>
             {latencyMs != null ? `${latencyMs}ms` : '18ms'}
           </strong>
-        </span>
+        </span> */}
 
         {/* Emergency Stop Button */}
         <button
