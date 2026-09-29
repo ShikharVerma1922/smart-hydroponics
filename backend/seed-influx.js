@@ -47,7 +47,7 @@ async function seedData() {
     const level = roundTo(baseLevel - (i / totalPoints) * 9.5 + noise * 2);
 
     const point = new Point('sensor_telemetry')
-      .tag('device_id', 'esp32_node_01')
+      .tag('deviceId', 'esp32_node_01')
       .tag('circulation_pump', 'ON')
       .floatField('ph', ph)
       .floatField('ec_ms_cm', ec)

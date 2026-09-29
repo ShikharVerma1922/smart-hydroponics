@@ -41,7 +41,7 @@ Success `200`:
   "success": true,
   "data": {
     "timestamp": "2026-09-27T12:00:00.000Z",
-    "device_id": "esp32_node_01",
+    "deviceId": "esp32_node_01",
     "circulation_pump_state": "ON",
     "sensors": {
       "ph": 6.1,
@@ -79,7 +79,7 @@ Success `200`:
   "data": [
     {
       "timestamp": "2026-09-27T12:00:00.000Z",
-      "device_id": "esp32_node_01",
+      "deviceId": "esp32_node_01",
       "ph": 6.1,
       "ec_ms_cm": 1.5,
       "water_temp_c": 22.8,
@@ -420,7 +420,7 @@ The backend subscribes to telemetry topic `hydro/+/telemetry`. Device messages m
 
 ```json
 {
-  "device_id": "esp32_node_01",
+  "deviceId": "esp32_node_01",
   "sensors": {
     "ph": 6.1,
     "ec_ms_cm": 1.5,

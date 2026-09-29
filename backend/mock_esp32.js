@@ -20,7 +20,7 @@ client.on('connect', () => {
     messageCount++;
 
     const mockData = {
-      device_id: 'esp32_node_01',
+      deviceId: 'esp32_node_01',
       timestamp: Date.now(),
       ph: parseFloat((6.2 + Math.random() * 0.4).toFixed(2)),
       ec_ms_cm: parseFloat((1.3 + Math.random() * 0.4).toFixed(2)),
@@ -48,7 +48,7 @@ const fluxQuery = `
     from(bucket: "hydro_telemetry")
       |> range(start: -1d, stop: 1d)
       |> filter(fn: (r) => r._measurement == "sensor_telemetry")
-      |> filter(fn: (r) => r.device_id == "esp32_node_01")
+      |> filter(fn: (r) => r.deviceId == "esp32_node_01")
       |> last()
   `;
 

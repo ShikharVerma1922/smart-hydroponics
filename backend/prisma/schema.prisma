@@ -39,6 +39,10 @@ enum AlertType {
   LOW_WATER_LEVEL
   BIOTIC_STRESS
   DESYNC_WARNING
+  SENSOR_FAULT
+  ACTUATOR_COMMS_FAILURE
+  PARTIAL_DOSE
+  DOSE_CAP_EXCEEDED
 }
 
 // 1. Central Device Registry
@@ -52,6 +56,12 @@ model Device {
   // Relationships
   activeRecipeId String?
   activeRecipe   CropRecipe? @relation("DeviceActiveRecipe", fields: [activeRecipeId], references: [id], onDelete: SetNull)
+
+  // Circulation state fields
+  circulationMode String   @default("CONTINUOUS") // "CONTINUOUS" | "INTERVAL" | "OFF"
+  circRunMin      Int      @default(15)
+  circRestMin     Int      @default(15)
+  circUpdatedAt   DateTime @default(now())
 
   diagnosticReports DiagnosticReport[]
   dosingLogs        DosingLog[]

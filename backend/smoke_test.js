@@ -5,9 +5,9 @@ import axios from 'axios';
 
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const DEVICE_ID = 'esp32_node_01';
+const deviceId = 'esp32_node_01';
 const TELEMETRY_TOPIC = 'hydro/system1/telemetry';
-const COMMAND_TOPIC = `hydro/${DEVICE_ID}/commands`;
+const COMMAND_TOPIC = `hydro/${deviceId}/commands`;
 
 // Helper sleep
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,7 +92,7 @@ class TestRunner {
 
   async publishTelemetry(sensors) {
     const payload = {
-      device_id: DEVICE_ID,
+      deviceId: deviceId,
       timestamp: Date.now(),
       sensors: {
         ph: 6.0,
@@ -156,7 +156,7 @@ class TestRunner {
 
     // Verify REST API log audit
     try {
-      const res = await axios.get(`${BACKEND_URL}/api/dosing/logs?deviceId=${DEVICE_ID}&limit=1`);
+      const res = await axios.get(`${BACKEND_URL}/api/dosing/logs?deviceId=${deviceId}&limit=1`);
       const log = res.data.data?.[0];
       this.assert(
         log && log.pumpType === 'PH_DOWN' && log.source === 'AUTONOMOUS_PH',
@@ -168,7 +168,7 @@ class TestRunner {
 
     // Verify System Mixing Lockout is active
     try {
-      const statusRes = await axios.get(`${BACKEND_URL}/api/system/status?deviceId=${DEVICE_ID}`);
+      const statusRes = await axios.get(`${BACKEND_URL}/api/system/status?deviceId=${deviceId}`);
       const { mixingLockout } = statusRes.data;
       this.assert(mixingLockout?.isActive === true, '10-minute reservoir mixing lockout is actively engaged');
     } catch (err) {
@@ -197,7 +197,7 @@ class TestRunner {
     let reportId = null;
     try {
       const reportRes = await axios.post(`${BACKEND_URL}/api/ml/diagnostic-report`, {
-        deviceId: DEVICE_ID,
+        deviceId: deviceId,
         primaryLabel: 'PHOSPHORUS_DEFICIENCY',
         confidence: 0.88,
         severity: 'HIGH',
@@ -249,7 +249,7 @@ class TestRunner {
     // Post diagnostic report indicating Nitrogen deficiency
     try {
       await axios.post(`${BACKEND_URL}/api/ml/diagnostic-report`, {
-        deviceId: DEVICE_ID,
+        deviceId: deviceId,
         primaryLabel: 'NITROGEN_DEFICIENCY',
         confidence: 0.92,
         severity: 'CRITICAL',

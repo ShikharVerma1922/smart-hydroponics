@@ -13,7 +13,7 @@ async function testDirect() {
   console.log('1. Writing single test point directly to InfluxDB...');
 
   const point = new Point('sensor_telemetry')
-    .tag('device_id', 'esp32_test_node')
+    .tag('deviceId', 'esp32_test_node')
     .floatField('ph', 6.45)
     .floatField('ec_ms_cm', 1.42)
     .timestamp(new Date());
@@ -28,7 +28,7 @@ async function testDirect() {
     from(bucket: "${bucket}")
       |> range(start: -1d)
       |> filter(fn: (r) => r._measurement == "sensor_telemetry")
-      |> filter(fn: (r) => r.device_id == "esp32_test_node")
+      |> filter(fn: (r) => r.deviceId == "esp32_test_node")
   `;
 
   let found = 0;
