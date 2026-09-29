@@ -5,80 +5,130 @@ const router = express.Router();
 
 /**
  * GET /api/crop/recipe
- * Query: ?deviceId=esp32_node_01
- * Returns current target thresholds for the device's active crop
  */
 router.get('/recipe', async (req, res) => {
-  const { deviceId = 'esp32_node_01' } = req.query;
-
   try {
-    const device = await prisma.device.findUnique({
-      where: { id: deviceId },
-      include: { activeRecipe: true },
-    });
-
-    if (!device) {
-      return res.status(404).json({ success: false, message: `Device ${deviceId} not found` });
-    }
-
-    res.json({
-      success: true,
-      deviceId: device.id,
-      deviceName: device.name,
-      recipe: device.activeRecipe || {
-        cropName: 'Default Baseline',
-        targetPhMin: 5.8,
-        targetPhMax: 6.5,
-        targetEcMin: 1.2,
-        targetEcMax: 1.8,
-        ecCeiling: 2.4,
-        minWaterLevel: 15.0,
+    const recipes = await prisma.cropRecipe.findMany({
+      orderBy: {
+        cropName: 'asc',
       },
     });
+
+    return res.json({
+      success: true,
+      recipes,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('[Crop Recipe] GET error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
 /**
- * PUT /api/crop/recipe
- * Updates threshold values or reassigns active recipe to a device
+ * POST /api/crop/recipe
+ *
+ * Body:
+ * {
+ *   "deviceId": "esp32_node_01",
+ *   "cropName": "Lettuce",
+ *   "targetPhMin": 5.8,
+ *   "targetPhMax": 6.5,
+ *   "targetEcMin": 1.2,
+ *   "targetEcMax": 1.8,
+ *   "ecCeiling": 2.4,
+ *   "minWaterLevel": 15
+ * }
  */
-router.put('/recipe', async (req, res) => {
-  const { deviceId = 'esp32_node_01', recipeId, targetPhMin, targetPhMax, targetEcMin, targetEcMax } = req.body;
+router.post('/recipe', async (req, res) => {
+  const {
+    deviceId = 'esp32_node_01',
+    cropName,
+    targetPhMin,
+    targetPhMax,
+    targetEcMin,
+    targetEcMax,
+    ecCeiling,
+    minWaterLevel,
+  } = req.body;
+
+  if (!cropName) {
+    return res.status(400).json({
+      success: false,
+      message: 'cropName is required',
+    });
+  }
 
   try {
-    // If switching to an existing preset recipe ID
-    if (recipeId) {
-      await prisma.device.update({
-        where: { id: deviceId },
-        data: { activeRecipeId: recipeId },
-      });
-      return res.json({ success: true, message: `Active recipe updated for ${deviceId}` });
-    }
-
-    // Updating specific recipe numbers
     const device = await prisma.device.findUnique({
       where: { id: deviceId },
-      select: { activeRecipeId: true },
     });
 
-    if (device?.activeRecipeId) {
-      const updated = await prisma.cropRecipe.update({
-        where: { id: device.activeRecipeId },
-        data: {
-          ...(targetPhMin && { targetPhMin: parseFloat(targetPhMin) }),
-          ...(targetPhMax && { targetPhMax: parseFloat(targetPhMax) }),
-          ...(targetEcMin && { targetEcMin: parseFloat(targetEcMin) }),
-          ...(targetEcMax && { targetEcMax: parseFloat(targetEcMax) }),
-        },
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: `Device ${deviceId} not found`,
       });
-      return res.json({ success: true, data: updated });
     }
 
-    res.status(400).json({ success: false, error: 'No recipe found to update for this device.' });
+    const recipe = await prisma.cropRecipe.create({
+      data: {
+        cropName,
+        ...(targetPhMin !== undefined && {
+          targetPhMin: Number(targetPhMin),
+        }),
+        ...(targetPhMax !== undefined && {
+          targetPhMax: Number(targetPhMax),
+        }),
+        ...(targetEcMin !== undefined && {
+          targetEcMin: Number(targetEcMin),
+        }),
+        ...(targetEcMax !== undefined && {
+          targetEcMax: Number(targetEcMax),
+        }),
+        ...(ecCeiling !== undefined && {
+          ecCeiling: Number(ecCeiling),
+        }),
+        ...(minWaterLevel !== undefined && {
+          minWaterLevel: Number(minWaterLevel),
+        }),
+      },
+    });
+
+    const updatedDevice = await prisma.device.update({
+      where: { id: deviceId },
+      data: {
+        activeRecipeId: recipe.id,
+      },
+      include: {
+        activeRecipe: true,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Crop recipe created and assigned to ${deviceId}`,
+      deviceId: updatedDevice.id,
+      deviceName: updatedDevice.name,
+      recipe: updatedDevice.activeRecipe,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('[Crop Recipe] POST error:', error);
+
+    if (error.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        message: `A crop recipe named "${cropName}" already exists`,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 

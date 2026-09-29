@@ -19,11 +19,11 @@ export async function getHistoricalTelemetry(deviceId = 'esp32_node_01', range =
   const fluxQuery = `
     from(bucket: "${bucket}")
       |> range(start: -${range})
-      |> filter(fn: (r) => r._measurement == "sensor_telemetry" and r.device_id == "${deviceId}")
+      |> filter(fn: (r) => r._measurement == "sensor_telemetry" and r.deviceId == "${deviceId}")
       |> aggregateWindow(every: ${windowInterval}, fn: mean, createEmpty: false)
-      |> pivot(rowKey:["_time", "device_id"], columnKey: ["_field"], valueColumn: "_value")
+      |> pivot(rowKey:["_time", "deviceId"], columnKey: ["_field"], valueColumn: "_value")
       |> sort(columns: ["_time"], desc: false)
-      |> keep(columns: ["_time", "device_id", "ph", "ec_ms_cm", "water_temp_c", "water_level_pct"])
+      |> keep(columns: ["_time", "deviceId", "ph", "ec_ms_cm", "water_temp_c", "water_level_pct", "air_temp_c", "humidity_pct"])
   `;
 
   const rows = [];
@@ -33,11 +33,13 @@ export async function getHistoricalTelemetry(deviceId = 'esp32_node_01', range =
         const o = tableMeta.toObject(row);
         rows.push({
           timestamp: o._time,
-          device_id: o.device_id || deviceId,
+          deviceId: o.deviceId || deviceId,
           ph: o.ph !== undefined && o.ph !== null ? parseFloat(Number(o.ph).toFixed(2)) : null,
           ec_ms_cm: o.ec_ms_cm !== undefined && o.ec_ms_cm !== null ? parseFloat(Number(o.ec_ms_cm).toFixed(2)) : null,
           water_temp_c: o.water_temp_c !== undefined && o.water_temp_c !== null ? parseFloat(Number(o.water_temp_c).toFixed(2)) : null,
           water_level_pct: o.water_level_pct !== undefined && o.water_level_pct !== null ? parseFloat(Number(o.water_level_pct).toFixed(2)) : null,
+          air_temp_c: o.air_temp_c !== undefined && o.air_temp_c !== null ? parseFloat(Number(o.air_temp_c).toFixed(2)) : null,
+          humidity_pct: o.humidity_pct !== undefined && o.humidity_pct !== null ? parseFloat(Number(o.humidity_pct).toFixed(2)) : null,
         });
       },
       error(err) {
@@ -55,9 +57,9 @@ export async function getLatestTelemetry(deviceId = 'esp32_node_01') {
   const fluxQuery = `
     from(bucket: "${bucket}")
       |> range(start: -7d)
-      |> filter(fn: (r) => r._measurement == "sensor_telemetry" and r.device_id == "${deviceId}")
+      |> filter(fn: (r) => r._measurement == "sensor_telemetry" and r.deviceId == "${deviceId}")
       |> last()
-      |> pivot(rowKey:["_time", "device_id"], columnKey: ["_field"], valueColumn: "_value")
+      |> pivot(rowKey:["_time", "deviceId"], columnKey: ["_field"], valueColumn: "_value")
   `;
 
   return new Promise((resolve, reject) => {
@@ -67,13 +69,15 @@ export async function getLatestTelemetry(deviceId = 'esp32_node_01') {
         const o = tableMeta.toObject(row);
         latestRecord = {
           timestamp: o._time,
-          device_id: o.device_id || deviceId,
+          deviceId: o.deviceId || deviceId,
           circulation_pump_state: o.circulation_pump_state || o.circulation_pump || 'ON',
           sensors: {
             ph: o.ph !== undefined && o.ph !== null ? parseFloat(Number(o.ph).toFixed(2)) : null,
             ec_ms_cm: o.ec_ms_cm !== undefined && o.ec_ms_cm !== null ? parseFloat(Number(o.ec_ms_cm).toFixed(2)) : null,
             water_temp_c: o.water_temp_c !== undefined && o.water_temp_c !== null ? parseFloat(Number(o.water_temp_c).toFixed(2)) : null,
             water_level_pct: o.water_level_pct !== undefined && o.water_level_pct !== null ? parseFloat(Number(o.water_level_pct).toFixed(2)) : null,
+            air_temp_c: o.air_temp_c !== undefined && o.air_temp_c !== null ? parseFloat(Number(o.air_temp_c).toFixed(2)) : null,
+            humidity_pct: o.humidity_pct !== undefined && o.humidity_pct !== null ? parseFloat(Number(o.humidity_pct).toFixed(2)) : null,
           },
         };
       },

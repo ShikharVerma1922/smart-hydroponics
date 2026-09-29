@@ -12,15 +12,21 @@ export async function recordTelemetry(payload) {
     const ec = roundTo(rawSensors.ec_ms_cm ?? rawSensors.ec ?? 0.0);
     const temp = roundTo(rawSensors.water_temp_c ?? rawSensors.temp ?? 24.0);
     const level = roundTo(rawSensors.water_level_pct ?? rawSensors.level ?? 100.0);
+    const airTemp = rawSensors.air_temp_c == null ? null : roundTo(rawSensors.air_temp_c);
+    const humidity = rawSensors.humidity_pct == null ? null : roundTo(rawSensors.humidity_pct);
 
     const point = new Point('sensor_telemetry')
-      .tag('device_id', payload.device_id || 'esp32_node_01')
+      .tag('deviceId', payload.deviceId || 'esp32_node_01')
       .tag('circulation_pump', payload.circulation_pump_state || 'ON')
       .floatField('ph', ph)
       .floatField('ec_ms_cm', ec)
       .floatField('water_temp_c', temp)
-      .floatField('water_level_pct', level)
-      .timestamp(new Date());
+      .floatField('water_level_pct', level);
+
+    if (airTemp != null) point.floatField('air_temp_c', airTemp);
+    if (humidity != null) point.floatField('humidity_pct', humidity);
+
+    point.timestamp(new Date());
 
     writeApi.writePoint(point);
     await writeApi.flush();

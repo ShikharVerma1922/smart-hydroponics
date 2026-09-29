@@ -112,7 +112,6 @@ router.post('/manual-pulse', async (req, res) => {
 router.post('/circulation', async (req, res) => {
   const { deviceId = 'esp32_node_01', mode = 'CONTINUOUS', runMin = 15, restMin = 15 } = req.body;
 
-  // 1. Validate circulation modes
   const validModes = ['CONTINUOUS', 'INTERVAL', 'OFF'];
   if (!validModes.includes(mode)) {
     return res.status(400).json({
@@ -121,7 +120,6 @@ router.post('/circulation', async (req, res) => {
     });
   }
 
-  // 2. Validate timing parameters for INTERVAL mode
   const parsedRunMin = parseInt(runMin, 10);
   const parsedRestMin = parseInt(restMin, 10);
 
@@ -135,18 +133,6 @@ router.post('/circulation', async (req, res) => {
   }
 
   try {
-    // 3. Verify target device exists
-    const device = await prisma.device.findUnique({
-      where: { id: deviceId },
-    });
-
-    if (!device) {
-      return res.status(404).json({
-        success: false,
-        error: `Device with ID "${deviceId}" not found.`,
-      });
-    }
-
     const timestamp = Date.now();
     const payload = {
       mode,
@@ -155,19 +141,29 @@ router.post('/circulation', async (req, res) => {
       timestamp,
     };
 
-    // 4. Publish MQTT command to hardware
+    // 1. Update Database (Persist Ground Truth)
+    const updatedDevice = await prisma.device.update({
+      where: { id: deviceId },
+      data: {
+        circulationMode: mode,
+        circRunMin: payload.run_min,
+        circRestMin: payload.rest_min,
+        circUpdatedAt: new Date(timestamp),
+      },
+    });
+
+    // 2. Publish MQTT command to hardware (Retained = true ensures ESP gets it even if it reconnects)
     const topic = `hydro/${deviceId}/circulation/set`;
-    
     await new Promise((resolve, reject) => {
-      mqttClient.publish(topic, JSON.stringify(payload), { qos: 1 }, (err) => {
+      mqttClient.publish(topic, JSON.stringify(payload), { qos: 1, retain: true }, (err) => {
         if (err) return reject(err);
         resolve();
       });
     });
 
-    console.log(`[Actuator MQTT] [${deviceId}] Set circulation -> ${mode}`);
+    console.log(`[Actuator MQTT] [\({deviceId}] Set circulation ->\){mode}`);
 
-    // 5. Broadcast state to connected frontend dashboards via Socket.io
+    // 3. Broadcast live update to all active frontends
     emitCirculationUpdate({
       deviceId,
       mode,
@@ -176,21 +172,59 @@ router.post('/circulation', async (req, res) => {
       timestamp,
     });
 
-    // 6. Return response
     return res.json({
       success: true,
       message: `Circulation schedule updated to ${mode}`,
       data: {
         deviceId,
-        ...payload,
+        mode: updatedDevice.circulationMode,
+        runMin: updatedDevice.circRunMin,
+        restMin: updatedDevice.circRestMin,
+        timestamp,
       },
     });
   } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(404).json({ success: false, error: `Device "${deviceId}" not found.` });
+    }
     console.error(`[Circulation Route Error] [${deviceId}]:`, error.message);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to update circulation pump schedule.',
     });
+  }
+});
+
+router.get('/circulation/:deviceId', async (req, res) => {
+  const { deviceId } = req.params;
+  try {
+    const device = await prisma.device.findUnique({
+      where: { id: deviceId },
+      select: {
+        id: true,
+        circulationMode: true,
+        circRunMin: true,
+        circRestMin: true,
+        circUpdatedAt: true,
+      },
+    });
+
+    if (!device) {
+      return res.status(404).json({ success: false, error: 'Device not found' });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        deviceId: device.id,
+        mode: device.circulationMode,
+        runMin: device.circRunMin,
+        restMin: device.circRestMin,
+        updatedAt: device.circUpdatedAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 
