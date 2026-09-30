@@ -76,6 +76,7 @@ export const dosingAPI = {
     if (params.source) query.set('source', params.source);
     if (params.page) query.set('page', params.page);
     if (params.limit) query.set('limit', params.limit);
+    if (params.range) query.set('range', params.range);
     return request(`/api/dosing/logs?${query.toString()}`);
   },
 };

@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 
 const SOURCE_FILTERS = [
   { label: 'All Sources', value: '' },
-  { label: 'Autonomous', value: 'AUTONOMOUS_EC' },
+  { label: 'Autonomous', value: 'AUTONOMOUS_PH,AUTONOMOUS_EC' },
   { label: 'ML-Biased', value: 'ML_BIASED' },
   { label: 'Manual', value: 'MANUAL_OVERRIDE' },
 ];
@@ -27,11 +27,23 @@ export default function DosingLog({ deviceId, newLogEntry }) {
   const [logs, setLogs] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1, limit: pageSize });
-  const [sourceFilter, setSourceFilter] = useState('');
+const [sourceFilter, setSourceFilter] = useState('');
+const [dateRange, setDateRange] = useState('7d');
   const [loading, setLoading] = useState(true);
-  const socketLog = newLogEntry?.deviceId === deviceId ? newLogEntry.log : null;
-  const socketLogMatchesFilter = socketLog && (!sourceFilter || socketLog.source === sourceFilter);
-  const hasUnfetchedSocketLog = socketLogMatchesFilter && !logs.some((log) => log.id === socketLog.id);
+const socketLog = newLogEntry?.deviceId === deviceId
+  ? newLogEntry.log
+  : null;
+
+const socketLogMatchesFilter =
+  socketLog &&
+  (
+    !sourceFilter ||
+    sourceFilter.split(',').includes(socketLog.source)
+  );
+
+const hasUnfetchedSocketLog =
+  socketLogMatchesFilter &&
+  !logs.some((log) => log.id === socketLog.id);
   const totalCount = pagination.total + (hasUnfetchedSocketLog ? 1 : 0);
   const totalPages = Math.max(1, pagination.pages, Math.ceil(totalCount / pageSize));
   const currentLogs = currentPage === 1 && hasUnfetchedSocketLog
@@ -43,7 +55,7 @@ export default function DosingLog({ deviceId, newLogEntry }) {
 
     const loadLogs = async () => {
       try {
-        const params = { deviceId, page: currentPage, limit: pageSize };
+        const params = { deviceId, page: currentPage, limit: pageSize,   range: dateRange, };
         if (sourceFilter) params.source = sourceFilter;
         const res = await dosingAPI.getLogs(params);
         if (!isCurrent) return;
@@ -63,7 +75,7 @@ export default function DosingLog({ deviceId, newLogEntry }) {
     return () => {
       isCurrent = false;
     };
-  }, [deviceId, currentPage, sourceFilter]);
+  }, [deviceId, currentPage, sourceFilter, dateRange]);
 
   const handleExport = () => {
     // Build CSV
@@ -109,14 +121,20 @@ export default function DosingLog({ deviceId, newLogEntry }) {
           </div>
 
           <select
-            className="btn btn--ghost btn--sm"
-            style={{ background: 'var(--bg-input)', fontSize: '0.6875rem' }}
-            defaultValue="7d"
-          >
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="all">All Time</option>
-          </select>
+  className="btn btn--ghost btn--sm"
+  style={{ background: 'var(--bg-input)', fontSize: '0.6875rem' }}
+  value={dateRange}
+  onChange={(e) => {
+    setLoading(true);
+    setCurrentPage(1);
+    setDateRange(e.target.value);
+  }}
+>
+  <option value="today">Today</option>
+  <option value="7d">Last 7 Days</option>
+  <option value="30d">Last 30 Days</option>
+  <option value="all">All Time</option>
+</select>
 
           <button className="btn btn--ghost btn--sm" onClick={handleExport} id="export-csv-btn">
             <FileDown size={12} /> Export Audit CSV

@@ -123,15 +123,31 @@ export function useTelemetryStream(socket, maxPoints = 100, deviceId = null) {
   const [latest, setLatest] = useState(null);
   const [buffer, setBuffer] = useState([]);
 
-  useSocketEvent(socket, 'telemetry:update', useCallback((data) => {
-    if (deviceId && data.deviceId !== deviceId) return;
-    setLatest(data);
-    setBuffer((prev) => {
-      const devicePoints = prev.filter((point) => point.deviceId === data.deviceId);
-      const next = [...devicePoints, { ...data.sensors, deviceId: data.deviceId, timestamp: data.timestamp }];
-      return next.length > maxPoints ? next.slice(-maxPoints) : next;
-    });
-  }, [deviceId, maxPoints]));
+useSocketEvent(socket, 'telemetry:update', useCallback((data) => {
+  if (deviceId && data.deviceId !== deviceId) return;
+
+  setLatest(data);
+
+  setBuffer((prev) => {
+    const devicePoints = prev.filter(
+      (point) => point.deviceId === data.deviceId
+    );
+
+    const next = [
+      ...devicePoints,
+      {
+        ...data.sensors,
+        deviceId: data.deviceId,
+        circulation_pump_state: data.circulation_pump_state,
+        timestamp: data.timestamp,
+      },
+    ];
+
+    return next.length > maxPoints
+      ? next.slice(-maxPoints)
+      : next;
+  });
+}, [deviceId, maxPoints]));
 
   return { latest, buffer };
 }
@@ -218,7 +234,6 @@ export function useDeviceHeartbeat(socket, deviceId) {
 
   useSocketEvent(socket, 'device:heartbeat', useCallback((data) => {
     if (data.deviceId === deviceId) setHeartbeat(data);
-    console.log(data)
   }, [deviceId]));
 
   return heartbeat;
