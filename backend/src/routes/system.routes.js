@@ -3,7 +3,7 @@ import { prisma } from '../config/prisma.js';
 import { getDeviceLockout } from '../services/dosing.service.js';
 
 const router = express.Router();
-const POST_DOSING_LOCKOUT_MS = 10 * 60 * 1000; // 10 minutes quiet period
+const POST_DOSING_LOCKOUT_MS =10 * 60 * 1000; // 10 minutes quiet period
 
 /**
  * GET /api/system/status

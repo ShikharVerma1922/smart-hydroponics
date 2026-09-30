@@ -431,7 +431,7 @@ The backend subscribes to telemetry topic `hydro/+/telemetry`. Device messages m
 }
 ```
 
-The handler also recognizes flat sensor fields, and aliases `ec`, `temp`, and `level` for `ec_ms_cm`, `water_temp_c`, and `water_level_pct`. Missing values are replaced with defaults by the current implementation. Telemetry is stored in InfluxDB, emitted as `telemetry:update`, and passed to dosing evaluation.
+The handler also recognizes flat sensor fields, and aliases `ec`, `temp`, and `level` for `ec_ms_cm`, `water_temp_c`, and `water_level_pct`. Missing values are replaced with defaults by the current implementation. Telemetry is stored in InfluxDB, emitted as `telemetry:stream`, and passed to dosing evaluation.
 
 Actuator pump commands are published to `hydro/{deviceId}/commands` with QoS 1:
 

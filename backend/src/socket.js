@@ -31,7 +31,7 @@ export function getIO() {
 
 // Architecture contract emission helpers
 export function emitTelemetryUpdate(data) {
-  if (io) io.emit('telemetry:update', data);
+  if (io) io.emit('telemetry:stream', data);
 }
 
 export function emitDosingEvent(data) {
