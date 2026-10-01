@@ -26,7 +26,6 @@ async function request(endpoint, options = {}) {
 }
 
 // ── Telemetry ──
-// ── Telemetry ──
 export const telemetryAPI = {
   getLatest: (deviceId = 'esp32_node_01') =>
     request(
@@ -47,7 +46,6 @@ export const telemetryAPI = {
     ),
 };
 
-// ── Actuators ──
 // ── Actuators ──
 export const actuatorAPI = {
   manualPulse: (deviceId, pumpType, durationMs) =>
@@ -83,8 +81,8 @@ export const dosingAPI = {
 
 // ── Crop Recipe ──
 export const cropAPI = {
-  getRecipe: (deviceId = 'esp32_node_01') =>
-    request(`/api/crop/recipe?deviceId=${deviceId}`),
+  getRecipe: () =>
+    request(`/api/crop/recipe`),
 
   updateRecipe: (body) =>
     request('/api/crop/recipe', {
@@ -131,6 +129,12 @@ export const systemAPI = {
   addDevice: (body) =>
     request('/api/system/devices', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateDeviceRecipe: (body)=>
+    request('/api/system/devices/:id/recipe',{
+      method: 'PUT',
       body: JSON.stringify(body),
     }),
 };

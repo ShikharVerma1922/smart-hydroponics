@@ -291,10 +291,15 @@ useEffect(() => {
         const average = (key) => {
           const values = points
             .map((point) =>
-              Number(point[key])
+              Number(point?.[key])
             )
             .filter(Number.isFinite);
 
+          /*
+           * If the live packet doesn't contain
+           * a valid value, preserve the existing
+           * historical value.
+           */
           if (!values.length) {
             return existing?.[key];
           }
@@ -308,9 +313,12 @@ useEffect(() => {
           );
         };
 
+        const latest =
+          points[points.length - 1];
+
         byBucket.set(bucketTime, {
           ...(existing || {}),
-          ...points[points.length - 1],
+          ...latest,
 
           time: bucketTime,
 
@@ -326,9 +334,11 @@ useEffect(() => {
           ),
 
           ph: average('ph'),
+
           ec_ms_cm: average(
             'ec_ms_cm'
           ),
+
           water_temp_c: average(
             'water_temp_c'
           ),

@@ -106,14 +106,24 @@ router.put('/alerts/:id/resolve', async (req, res) => {
   const { resolvedBy = 'USER' } = req.body
 
   try {
-    const alert = await prisma.systemAlert.update({
-      where: { id },
-      data: {
-        isResolved: true,
-        resolvedAt: new Date(),
-        resolvedBy,
-      },
-    });
+   const result = await prisma.systemAlert.updateMany({
+  where: { 
+    id,
+    isResolved: false
+  },
+  data: {
+    isResolved: true,
+    resolvedAt: new Date(),
+    resolvedBy: resolvedBy || 'SYSTEM',
+  },
+});
+
+if (result.count === 0) {
+  return res.status(404).json({
+    success: false,
+    error: `Alert "${id}" not found or already resolved.`,
+  });
+}
 
     res.json({ success: true, message: 'Alert resolved successfully', data: alert });
   } catch (error) {

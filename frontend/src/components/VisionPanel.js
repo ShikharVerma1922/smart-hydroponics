@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Upload, Microscope, Lock, ExternalLink } from 'lucide-react';
-import { visionAPI, getUploadUrl } from '@/lib/api';
+import { visionAPI } from '@/lib/api';
 
 const DEFICIENCY_COLORS = {
   NITROGEN_DEFICIENCY: { bg: 'var(--accent-red-dim)', fill: 'linear-gradient(90deg, #f59e0b, #ef4444)' },
@@ -57,7 +57,8 @@ export default function VisionPanel({ deviceId, latestReport, onOpenArchive, coo
         .sort((a, b) => b.value - a.value)
     : [];
 
-  const imageUrl = previewUrl || (report?.imageUrl ? getUploadUrl(report.imageUrl) : null);
+  const imageUrl = previewUrl || report?.imageUrl || null;
+
   const scanCount = report ? 14 : 0; // Placeholder; would come from history count
 
   return (

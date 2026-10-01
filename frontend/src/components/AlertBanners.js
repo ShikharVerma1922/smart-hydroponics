@@ -34,7 +34,7 @@ export default function AlertBanners({
   const lockoutPct = lockout.isActive
     ? ((lockoutRemaining / 600) * 100).toFixed(0)
     : 0;
-
+console.log(alerts)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {/* Critical Alerts */}

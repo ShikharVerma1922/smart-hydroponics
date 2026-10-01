@@ -1,57 +1,76 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import axios from 'axios';
 import FormData from 'form-data';
+import { v2 as cloudinary } from 'cloudinary';
 import { prisma } from '../config/prisma.js';
 import { handleIncomingDiagnosticReport } from '../services/dosing.service.js';
 
 const router = express.Router();
 
-// Local uploads directory
-const UPLOADS_DIR = path.resolve('uploads/canopy');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
+// ─────────────────────────────────────────────
+// Cloudinary configuration
+// ─────────────────────────────────────────────
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `canopy-${Date.now()}${ext}`);
-  },
+cloudinary.config({
+  secure: true,
 });
+
+// ─────────────────────────────────────────────
+// Multer
+// Images are kept in memory temporarily.
+// No local upload directory is required.
+// ─────────────────────────────────────────────
 
 const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only image files are allowed!'), false);
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
   },
 });
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000/api/vision/predict';
+const ML_SERVICE_URL =
+  process.env.ML_SERVICE_URL ||
+  'http://localhost:8000/api/vision/predict';
 
 /**
  * POST /api/vision/analyze
- * Receives an image, executes CNN inference, logs the DiagnosticReport,
- * and triggers closed-loop remediation logic against live InfluxDB telemetry.
+ *
+ * Flow:
+ * 1. Receive image through Multer
+ * 2. Keep image temporarily in memory
+ * 3. Send image to Python ML service
+ * 4. Upload image to Cloudinary
+ * 5. Save Cloudinary secure_url in PostgreSQL
+ * 6. Trigger dosing/remediation logic
  */
 router.post('/analyze', upload.single('image'), async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ success: false, error: 'No image uploaded' });
+    return res.status(400).json({
+      success: false,
+      error: 'No image uploaded',
+    });
   }
 
   const deviceId = req.body.deviceId || 'esp32_node_01';
-  const filePath = req.file.path;
-  const relativeUrl = `/uploads/canopy/${req.file.filename}`;
+  const imageBuffer = req.file.buffer;
 
   try {
-    // Ensure the Device foreign key exists in PostgreSQL
+    // ─────────────────────────────────────────────
+    // Ensure Device exists
+    // ─────────────────────────────────────────────
+
     await prisma.device.upsert({
-      where: { id: deviceId },
+      where: {
+        id: deviceId,
+      },
       update: {},
       create: {
         id: deviceId,
@@ -62,6 +81,7 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
     let primaryLabel = 'HEALTHY';
     let confidence = 0.94;
     let severity = 'LOW';
+
     let classProbabilities = {
       HEALTHY: 0.94,
       NITROGEN_DEFICIENCY: 0.03,
@@ -72,33 +92,73 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
       IRON_DEFICIENCY: 0.0,
     };
 
+    // ─────────────────────────────────────────────
     // 1. Forward image to Python FastAPI vision service
+    // ─────────────────────────────────────────────
+
     try {
       const form = new FormData();
-      form.append('file', fs.createReadStream(filePath));
 
-      const mlResponse = await axios.post(ML_SERVICE_URL, form, {
-        headers: form.getHeaders(),
-        timeout: 15000,
-      });
+      form.append(
+        'file',
+        imageBuffer,
+        {
+          filename: req.file.originalname,
+          contentType: req.file.mimetype,
+        }
+      );
+
+      const mlResponse = await axios.post(
+        ML_SERVICE_URL,
+        form,
+        {
+          headers: form.getHeaders(),
+          timeout: 15000,
+        }
+      );
 
       const resData = mlResponse.data;
 
+      console.log(resData)
+
       if (resData) {
-        primaryLabel = resData.primary_label || resData.primaryLabel || primaryLabel;
-        confidence = parseFloat(resData.confidence ?? confidence);
-        severity = resData.severity || (primaryLabel === 'HEALTHY' ? 'NONE' : 'MODERATE');
-        classProbabilities = resData.class_probabilities || resData.classProbabilities || classProbabilities;
+        primaryLabel =
+          resData.primary_label ||
+          resData.primaryLabel ||
+          primaryLabel;
+
+        confidence = parseFloat(
+          resData.confidence ?? confidence
+        );
+
+        severity =
+          resData.severity ||
+          (primaryLabel === 'HEALTHY'
+            ? 'NONE'
+            : 'MODERATE');
+
+        classProbabilities =
+          resData.class_probabilities ||
+          resData.classProbabilities ||
+          classProbabilities;
       }
     } catch (mlErr) {
-      if (mlErr.response && mlErr.response.status === 422) {
-        const errorDetail = mlErr.response.data?.detail || 'Image rejected by vision pre-filter.';
-        console.warn(`[ML Service 422] Canopy validation failed for device ${deviceId}:`, errorDetail);
+      // ─────────────────────────────────────────
+      // ML service rejected the image
+      // ─────────────────────────────────────────
 
-        // Clean up the invalid file from local disk
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
+      if (
+        mlErr.response &&
+        mlErr.response.status === 422
+      ) {
+        const errorDetail =
+          mlErr.response.data?.detail ||
+          'Image rejected by vision pre-filter.';
+
+        console.warn(
+          `[ML Service 422] Canopy validation failed for device ${deviceId}:`,
+          errorDetail
+        );
 
         return res.status(422).json({
           success: false,
@@ -107,46 +167,156 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
         });
       }
 
-      // Handle transient errors (e.g. Service Unavailable, Network Timeout)
-      console.warn(`[ML Service] FastAPI request failed (${mlErr.message}). Checking manual mock override.`);
+      // ─────────────────────────────────────────
+      // ML service unavailable
+      // ─────────────────────────────────────────
+
+      console.warn(
+        `[ML Service] FastAPI request failed (${mlErr.message}). Checking manual mock override.`
+      );
 
       if (req.body.mockLabel) {
         primaryLabel = req.body.mockLabel;
-        severity = primaryLabel === 'HEALTHY' ? 'NONE' : 'MODERATE';
+
+        severity =
+          primaryLabel === 'HEALTHY'
+            ? 'NONE'
+            : 'MODERATE';
       } else {
-        // If the ML service is completely down and no mock is specified,
-        // do not guess deficiency; fail safely or inform caller
-        console.warn('[ML Service] Operating in offline mode. Falling back to baseline HEALTHY.');
+        console.warn(
+          '[ML Service] Operating in offline mode. Falling back to baseline HEALTHY.'
+        );
       }
     }
 
-    // 2. Cooldown check: Inherit active cooldown so a new photo doesn't bypass lockout
-    const existingActiveCooldown = await prisma.diagnosticReport.findFirst({
-      where: {
-        deviceId,
-        cooldownActiveTill: { gt: new Date() },
-      },
-      select: { cooldownActiveTill: true },
-    });
+    // ─────────────────────────────────────────────
+    // 2. Upload image to Cloudinary
+    // ─────────────────────────────────────────────
 
-    // 3. Persist in PostgreSQL via DiagnosticReport model
-    const report = await prisma.diagnosticReport.create({
-      data: {
-        deviceId,
-        imageUrl: relativeUrl,
-        primaryLabel,
-        confidence,
-        severity,
-        classProbabilities,
-        actionTaken: 'Diagnosis pending telemetry evaluation',
-        cooldownActiveTill: existingActiveCooldown?.cooldownActiveTill ?? null,
-      },
-    });
+    let imageUrl = null;
 
-    // 4. Trigger Slow-Loop remediation logic asynchronously
-    handleIncomingDiagnosticReport(report).catch((err) => {
-      console.error('[Vision Dosing Evaluation Error]:', err.message);
-    });
+    try {
+      const cloudinaryResult =
+        await new Promise((resolve, reject) => {
+          const stream =
+            cloudinary.uploader.upload_stream(
+              {
+                folder: 'smart-hydroponics/canopy',
+                resource_type: 'image',
+                use_filename: true,
+                unique_filename: true,
+              },
+              (error, result) => {
+                if (error) {
+                  reject(error);
+                } else {
+                  resolve(result);
+                }
+              }
+            );
+
+          stream.end(imageBuffer);
+        });
+
+      imageUrl = cloudinaryResult.secure_url;
+
+      console.log(
+        `[Cloudinary] Image uploaded successfully: ${imageUrl}`
+      );
+    } catch (cloudinaryError) {
+      console.error(
+        '[Cloudinary] Image upload failed'
+      );
+
+      console.error(
+        'Full error:',
+        cloudinaryError
+      );
+
+      console.error(
+        'Message:',
+        cloudinaryError?.message
+      );
+
+      console.error(
+        'HTTP code:',
+        cloudinaryError?.http_code
+      );
+
+      console.error(
+        'Name:',
+        cloudinaryError?.name
+      );
+
+      throw new Error(
+        `Cloudinary upload failed (${
+          cloudinaryError?.http_code || 'unknown'
+        }): ${
+          cloudinaryError?.message ||
+          'Unknown Cloudinary error'
+        }`
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // 3. Check active cooldown
+    // ─────────────────────────────────────────────
+
+    const existingActiveCooldown =
+      await prisma.diagnosticReport.findFirst({
+        where: {
+          deviceId,
+          cooldownActiveTill: {
+            gt: new Date(),
+          },
+        },
+        select: {
+          cooldownActiveTill: true,
+        },
+      });
+
+    // ─────────────────────────────────────────────
+    // 4. Persist diagnostic report
+    // ─────────────────────────────────────────────
+
+    const report =
+      await prisma.diagnosticReport.create({
+        data: {
+          deviceId,
+
+          // Permanent Cloudinary URL
+          imageUrl,
+
+          primaryLabel,
+          confidence,
+          severity,
+          classProbabilities,
+
+          actionTaken:
+            'Diagnosis pending telemetry evaluation',
+
+          cooldownActiveTill:
+            existingActiveCooldown?.cooldownActiveTill ??
+            null,
+        },
+      });
+
+    // ─────────────────────────────────────────────
+    // 5. Trigger slow-loop remediation logic
+    // ─────────────────────────────────────────────
+
+    handleIncomingDiagnosticReport(report).catch(
+      (err) => {
+        console.error(
+          '[Vision Dosing Evaluation Error]:',
+          err.message
+        );
+      }
+    );
+
+    // ─────────────────────────────────────────────
+    // 6. Response
+    // ─────────────────────────────────────────────
 
     return res.status(201).json({
       success: true,
@@ -154,70 +324,129 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
       data: report,
     });
   } catch (error) {
-    console.error('Error handling diagnostic report:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error(
+      'Error handling diagnostic report:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
+
 /**
  * GET /api/vision/latest
- * Query: ?deviceId=esp32_node_01
- * Fetches the most recent scan and its associated dosing logs
+ *
+ * Query:
+ * ?deviceId=esp32_node_01
  */
+
 router.get('/latest', async (req, res) => {
-  const { deviceId = 'esp32_node_01' } = req.query;
+  const {
+    deviceId = 'esp32_node_01',
+  } = req.query;
 
   try {
-    const report = await prisma.diagnosticReport.findFirst({
-      where: { deviceId },
-      orderBy: { timestamp: 'desc' },
-      include: { dosingEvents: true },
-    });
+    const report =
+      await prisma.diagnosticReport.findFirst({
+        where: {
+          deviceId,
+        },
+        orderBy: {
+          timestamp: 'desc',
+        },
+        include: {
+          dosingEvents: true,
+        },
+      });
 
     if (!report) {
-      return res.status(404).json({ success: false, message: 'No diagnostic reports found' });
+      return res.status(404).json({
+        success: false,
+        message: 'No diagnostic reports found',
+      });
     }
 
-    res.json({ success: true, data: report });
+    res.json({
+      success: true,
+      data: report,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
 /**
  * GET /api/vision/history
- * Query: ?deviceId=esp32_node_01&page=1&limit=10
+ *
+ * Query:
+ * ?deviceId=esp32_node_01&page=1&limit=10
  */
-router.get('/history', async (req, res) => {
-  const { deviceId, page = 1, limit = 10 } = req.query;
-  const take = Math.min(parseInt(limit, 10) || 10, 50);
-  const skip = ((parseInt(page, 10) || 1) - 1) * take;
 
-  const where = deviceId ? { deviceId } : {};
+router.get('/history', async (req, res) => {
+  const {
+    deviceId,
+    page = 1,
+    limit = 10,
+  } = req.query;
+
+  const take = Math.min(
+    parseInt(limit, 10) || 10,
+    50
+  );
+
+  const currentPage =
+    parseInt(page, 10) || 1;
+
+  const skip =
+    (currentPage - 1) * take;
+
+  const where = deviceId
+    ? { deviceId }
+    : {};
 
   try {
-    const [total, reports] = await Promise.all([
-      prisma.diagnosticReport.count({ where }),
-      prisma.diagnosticReport.findMany({
-        where,
-        take,
-        skip,
-        orderBy: { timestamp: 'desc' },
-        include: { dosingEvents: true },
-      }),
-    ]);
+    const [total, reports] =
+      await Promise.all([
+        prisma.diagnosticReport.count({
+          where,
+        }),
+
+        prisma.diagnosticReport.findMany({
+          where,
+          take,
+          skip,
+          orderBy: {
+            timestamp: 'desc',
+          },
+          include: {
+            dosingEvents: true,
+          },
+        }),
+      ]);
 
     res.json({
       success: true,
+
       pagination: {
         total,
-        page: parseInt(page, 10) || 1,
+        page: currentPage,
         pages: Math.ceil(total / take),
         limit: take,
       },
+
       data: reports,
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 

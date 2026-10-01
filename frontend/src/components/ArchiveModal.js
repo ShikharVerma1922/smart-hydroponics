@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Download, RefreshCw } from 'lucide-react';
-import { visionAPI, getUploadUrl } from '@/lib/api';
+import { visionAPI } from '@/lib/api';
 import { format, formatDistanceToNow } from 'date-fns';
 
 const SEVERITY_COLORS = {
@@ -133,7 +133,7 @@ export default function ArchiveModal({ isOpen, onClose, deviceId }) {
                    {selectedScan.imageUrl && (
   <img
     className="archive-detail__image"
-    src={getUploadUrl(selectedScan.imageUrl)}
+    src={selectedScan.imageUrl}
     alt="Canopy scan"
     style={{
       width: '100%',
