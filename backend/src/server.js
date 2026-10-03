@@ -18,27 +18,28 @@ import dosingRoutes from './routes/dosing.routes.js';
 import cropRoutes from './routes/crop.routes.js';
 import visionRoutes from './routes/vision.routes.js';
 import systemRoutes from './routes/system.routes.js';
+import { createPlaygroundRouter } from './playground/playground.router.js';
 
 const app = express();
 const server = http.createServer(app);
 
-// 1. Initialize core infrastructure
+const playground = createPlaygroundRouter(); 
+
 initMQTTHandler();
 initSocket(server);
 startHeartbeatMonitor();
 
-// 2. Middlewares
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use('/uploads', express.static(path.resolve('uploads')));
 
-// 3. API Routes
 app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/actuators', actuatorRoutes);
 app.use('/api/dosing', dosingRoutes);
 app.use('/api/crop', cropRoutes);
 app.use('/api/vision', visionRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/playground', playground.router);
 
 const PORT = process.env.PORT || 3000;
 
@@ -46,7 +47,6 @@ server.listen(PORT, () => {
   console.log(`Hydroponics Backend running on http://localhost:${PORT}`);
 });
 
-// 4. Graceful Shutdown Handlers
 async function gracefulShutdown(signal) {
   console.log(`\n[Shutdown] Received ${signal}. Closing connections cleanly...`);
 
