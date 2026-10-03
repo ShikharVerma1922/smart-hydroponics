@@ -93,11 +93,11 @@ export default function NavigationMenu({
             </div>
             <div>
               <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                Hydroponics Core
+                Smart Hydroponics System
               </div>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--accent-green)', fontWeight: 600 }}>
+              {/* <div style={{ fontSize: '0.6875rem', color: 'var(--accent-green)', fontWeight: 600 }}>
                 {isSimulated ? '● Simulation Active' : '● Hardware Live'}
-              </div>
+              </div> */}
             </div>
           </div>
           <button
@@ -223,7 +223,7 @@ export default function NavigationMenu({
           </div>
 
           {/* Section: Live Simulation Toggle */}
-          <div
+          {/* <div
             style={{
               padding: '1rem',
               borderRadius: '10px',
@@ -265,7 +265,7 @@ export default function NavigationMenu({
                 ? 'Simulating live ESP32 telemetry updates, heartbeat pings & active dosing'
                 : 'Listening for real physical WebSocket hardware'}
             </p>
-          </div>
+          </div> */}
         </div>
 
         {/* Drawer Footer: Emergency Stop Action */}

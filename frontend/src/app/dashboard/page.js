@@ -216,7 +216,7 @@ export default function Dashboard() {
 
   const phTrend = calcTrend(phHistory);
   return (
-    <>
+    <div className="dashboard-page">
       <Navbar
         devices={devices}
         selectedDevice={selectedDevice}
@@ -399,6 +399,6 @@ export default function Dashboard() {
         onClose={() => setArchiveModalOpen(false)}
         deviceId={selectedDevice}
       />
-    </>
+    </div>
   );
 }
