@@ -18,9 +18,9 @@
 #include <time.h>
 
 // ===================== Configuration =====================
-const char*    WIFI_SSID    = "YOUR_WIFI_NAME";
-const char*    WIFI_PASS    = "YOUR_WIFI_PASSWORD";
-const char*    MQTT_HOST    = "192.168.1.100";   // LAN IP of the broker (NOT localhost)
+const char*    WIFI_SSID    = "Realme S";
+const char*    WIFI_PASS    = "1234567891";
+const char*    MQTT_HOST    = "10.99.25.52";  // LAN IP of the broker (NOT localhost)
 const uint16_t MQTT_PORT    = 1883;
 const char*    MQTT_USER    = "";                // leave empty if the broker has no auth
 const char*    MQTT_PASS    = "";
@@ -31,7 +31,17 @@ const char*    TOPIC_PREFIX = "hydro/playground";// must match PLAYGROUND_TOPIC_
 const uint32_t MAX_PULSE_MS         = 30000;     // hard clamp for any timed pulse
 const uint32_t DEFAULT_PULSE_MS     = 2000;      // used if a dosing ON arrives without a duration
 const unsigned long COMMS_FAILSAFE_MS   = 10000; // all LEDs off if MQTT is down this long
-const unsigned long STATUS_HEARTBEAT_MS = 15000;
+const unsigned long RECHECK_INTERVAL_MS = 10000; // every 10 s: verify WiFi + MQTT, send a heartbeat, blink the LED
+const unsigned long BLINK_ON_MS         = 120;   // onboard LED blink timing (non-blocking)
+const unsigned long BLINK_GAP_MS        = 180;
+const uint16_t      MQTT_KEEPALIVE_S    = 10;    // broker declares the rig dead after ~1.5x this and publishes the last-will
+
+// Every command carries `expires_at` (the SERVER's clock). The MQTT session is clean, so the broker never replays
+// old commands: enforcing the expiry protects nothing, while a server clock that is off by more than the TTL
+// (common on laptops/WSL) makes the rig silently ignore EVERY command. Leave it 0 unless both clocks are NTP-synced.
+#ifndef ENFORCE_COMMAND_EXPIRY
+#define ENFORCE_COMMAND_EXPIRY 0
+#endif
 const unsigned long MQTT_RETRY_MS       = 5000;
 
 // ===================== Actuators =====================
@@ -63,9 +73,10 @@ char topicStatus[80];
 String        lastCommandId   = "";
 bool          statusDirty     = true;
 bool          failsafeFired   = false;
-unsigned long lastStatusMs    = 0;
+unsigned long lastRecheckMs   = 0;
 unsigned long lastMqttAttempt = 0;
 unsigned long mqttDownSince   = 0;
+uint32_t      mqttConnectCount = 0;   // successful MQTT connects since boot (reconnects = this - 1)
 
 // ===================== Actuator control =====================
 int findActuator(const char* name) {
@@ -105,22 +116,85 @@ void updateActuators() {
 }
 
 // ===================== Status =====================
-void publishStatus() {
-  if (!client.connected()) return;
+bool publishStatus() {
+  if (!client.connected()) return false;
 
   JsonDocument doc;
   doc["online"] = true;
   doc["rig"] = RIG_ID;
   doc["uptime_ms"] = millis();
+  doc["rssi"] = WiFi.RSSI();   // weak WiFi (below about -75 dBm) is a classic cause of late or missed commands
+  doc["reconnects"] = mqttConnectCount > 0 ? mqttConnectCount - 1 : 0;
   JsonObject acts = doc["actuators"].to<JsonObject>();
   for (uint8_t i = 0; i < ACTUATOR_COUNT; i++) acts[actuators[i].name] = actuators[i].on;
 
   char buf[320];
   serializeJson(doc, buf, sizeof(buf));
-  if (client.publish(topicStatus, buf, true)) {   // retained
-    statusDirty = false;
-    lastStatusMs = millis();
+  const bool ok = client.publish(topicStatus, buf, true);   // retained
+  if (ok) statusDirty = false;
+  return ok;
+}
+
+// ===================== Onboard LED + periodic recheck =====================
+// The LED is active-low on ESP8266.
+//   solid ON  = WiFi is down
+//   1 blink   = recheck ran, WiFi and broker are fine, heartbeat sent
+//   3 blinks  = recheck ran, WiFi is up but the broker is unreachable
+// Blinking is a tiny state machine driven from loop(), so it never blocks.
+uint8_t       blinkPulsesLeft = 0;
+bool          blinkLedOn      = false;
+unsigned long blinkChangedAt  = 0;
+
+void startBlink(uint8_t pulses) {
+  blinkPulsesLeft = pulses;
+  blinkLedOn = false;
+  blinkChangedAt = millis() - BLINK_GAP_MS;   // first pulse starts immediately
+}
+
+void updateStatusLed() {
+  if (WiFi.status() != WL_CONNECTED) {
+    blinkPulsesLeft = 0;
+    digitalWrite(LED_BUILTIN, LOW);           // solid ON while WiFi is down
+    return;
   }
+
+  const unsigned long now = millis();
+  if (blinkPulsesLeft > 0) {
+    if (!blinkLedOn && now - blinkChangedAt >= BLINK_GAP_MS) {
+      blinkLedOn = true;
+      blinkChangedAt = now;
+      digitalWrite(LED_BUILTIN, LOW);         // LED on
+    } else if (blinkLedOn && now - blinkChangedAt >= BLINK_ON_MS) {
+      blinkLedOn = false;
+      blinkChangedAt = now;
+      digitalWrite(LED_BUILTIN, HIGH);        // LED off
+      blinkPulsesLeft--;
+    }
+    return;
+  }
+  digitalWrite(LED_BUILTIN, HIGH);            // idle: off
+}
+
+// Runs every RECHECK_INTERVAL_MS: confirm the node is really online, prove it to the backend, show it on the LED.
+void recheckNode() {
+  const bool wifiOk = WiFi.status() == WL_CONNECTED;
+  bool heartbeatSent = false;
+
+  if (wifiOk && client.connected()) {
+    heartbeatSent = publishStatus();          // the backend marks the rig offline if these stop arriving
+  } else if (wifiOk) {
+    lastMqttAttempt = 0;                      // broker link is down: retry now instead of waiting for the next retry slot
+  }
+
+  Serial.printf("[RECHECK] WiFi %s (%d dBm) | MQTT %s | heartbeat %s | reconnects %lu | uptime %lus\n",
+                wifiOk ? "ok" : "DOWN",
+                (int)WiFi.RSSI(),
+                client.connected() ? "ok" : "DOWN",
+                heartbeatSent ? "sent" : "not sent",
+                (unsigned long)(mqttConnectCount > 0 ? mqttConnectCount - 1 : 0),
+                millis() / 1000);
+
+  if (wifiOk) startBlink(heartbeatSent ? 1 : 3);   // WiFi down is shown by the solid LED instead
 }
 
 // ===================== Command handling =====================
@@ -137,12 +211,20 @@ void handleCommand(const char* payload, unsigned int length) {
     return;
   }
 
-  // Drop stale commands once the clock is synced (NTP)
+  // Command age check (needs an NTP-synced rig clock AND a correct server clock; see ENFORCE_COMMAND_EXPIRY)
   int64_t expiresAt = doc["expires_at"].as<int64_t>();
   time_t nowSec = time(nullptr);
-  if (expiresAt > 0 && nowSec > 1700000000 && (int64_t)nowSec * 1000 > expiresAt) {
-    Serial.println("[CMD] Ignored: command expired");
-    return;
+  if (expiresAt > 0 && nowSec > 1700000000) {
+    int64_t lateByMs = (int64_t)nowSec * 1000 - expiresAt;   // > 0 means the command is already past its expiry
+    if (lateByMs > 0) {
+      const long shown = lateByMs > 2000000000LL ? 2000000000L : (long)lateByMs;
+#if ENFORCE_COMMAND_EXPIRY
+      Serial.printf("[CMD] Ignored: command expired %ld ms ago (server and rig clocks may disagree)\n", shown);
+      return;
+#else
+      Serial.printf("[CMD] WARNING: command is %ld ms past its expiry. Executing anyway. A large value means the server clock and the rig clock disagree.\n", shown);
+#endif
+    }
   }
 
   const char* type = doc["type"] | "";
@@ -193,6 +275,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // ===================== Connectivity =====================
 void connectWifiBlocking() {
   WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);   // the default modem-sleep dozes the radio between beacons: commands arrive 100-300+ ms late or are missed
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
   unsigned long start = millis();
@@ -231,6 +315,7 @@ void ensureMqtt() {
 
   if (ok) {
     Serial.println("connected");
+    mqttConnectCount++;
     client.subscribe(topicCommand, 1);
     Serial.printf("[MQTT] Subscribed to %s\n", topicCommand);
     statusDirty = true;
@@ -270,11 +355,12 @@ void setup() {
   client.setServer(MQTT_HOST, MQTT_PORT);
   client.setBufferSize(512);
   client.setSocketTimeout(3);
+  client.setKeepAlive(MQTT_KEEPALIVE_S);
   client.setCallback(mqttCallback);
 }
 
 void loop() {
-  digitalWrite(LED_BUILTIN, WiFi.status() == WL_CONNECTED ? HIGH : LOW);
+  updateStatusLed();     // solid ON = no WiFi, short blinks = recheck results
 
   updateActuators();     // non-blocking pulse timeouts
   ensureMqtt();
@@ -282,7 +368,9 @@ void loop() {
   checkFailsafe();
 
   const unsigned long now = millis();
-  if (client.connected() && (statusDirty || now - lastStatusMs >= STATUS_HEARTBEAT_MS)) {
-    publishStatus();
+  if (now - lastRecheckMs >= RECHECK_INTERVAL_MS) {
+    lastRecheckMs = now;
+    recheckNode();                              // every 10 s: verify, heartbeat, blink
   }
+  if (client.connected() && statusDirty) publishStatus();   // push actuator changes immediately
 }
