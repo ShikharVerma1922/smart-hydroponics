@@ -5,7 +5,6 @@ import { ACTUATOR_IDS, DOSING_ACTUATORS, HttpError, MIN_PULSE_MS } from './types
 const COMMAND_TTL_MS = 15_000;
 /** The backend sends an explicit OFF slightly after the rig's own timeout (belt and braces). */
 const AUTO_RESET_GRACE_MS = 300;
-const RIG_STALE_AFTER_MS = 45_000;
 
 export class PlaygroundMqttBridge {
   resetTimers = new Map();
@@ -21,39 +20,16 @@ export class PlaygroundMqttBridge {
     this.client =
       existingClient ??
       mqtt.connect(cfg.mqttUrl, {
+        username: cfg.mqttUsername,
+        password: cfg.mqttPassword,
         reconnectPeriod: 3000,
         clientId: `playground-bridge-${randomUUID().slice(0, 8)}`,
       });
 
-    this.client.on('connect', () => {
-  console.log('[Playground MQTT] connected, subscribing to:', this.cfg.topics.status);
-  this.subscribeToStatus();
-});
-    this.client.on('message', (topic, payload) => this.onMessage(topic, payload));
-    this.client.on('error', (err) => {
-  console.error('[Playground MQTT] MQTT error:', {
-    name: err?.name,
-    message: err?.message,
-    code: err?.code,
-    errno: err?.errno,
-    syscall: err?.syscall,
-    address: err?.address,
-    port: err?.port,
-    stack: err?.stack,
-  });
-});
+    this.client.on('connect', () => this.subscribeToStatus());
+    this.client.on('message', (topic, payload, packet) => this.onMessage(topic, payload, packet));
+    this.client.on('error', (err) => console.error('[Playground MQTT] error:', err.message));
     if (this.client.connected) this.subscribeToStatus();
-    this.client.on('close', () => {
-  console.error('[Playground MQTT] connection closed');
-});
-
-this.client.on('offline', () => {
-  console.error('[Playground MQTT] client offline');
-});
-
-this.client.on('reconnect', () => {
-  console.log('[Playground MQTT] reconnecting...');
-});
   }
 
   isConnected() {
@@ -94,7 +70,8 @@ this.client.on('reconnect', () => {
       this.armAutoReset(actuator, autoResetInMs);
     }
 
-    return { ok: true, commandId, topic: this.cfg.topics.command, autoResetInMs };
+    // "ok" means the BROKER accepted the command; rigOnline tells the caller whether the rig is likely to receive it.
+    return { ok: true, commandId, topic: this.cfg.topics.command, autoResetInMs, rigOnline: this.snapshot().rigOnline };
   }
 
   async stopAll() {
@@ -117,7 +94,7 @@ this.client.on('reconnect', () => {
     }
     return {
       mqttConnected: this.client.connected,
-      rigOnline: this.rigStatus !== null && this.rigStatus.online && now - this.rigStatus.receivedAt < RIG_STALE_AFTER_MS,
+      rigOnline: this.rigStatus !== null && this.rigStatus.online && now - this.rigStatus.receivedAt < this.cfg.rigStaleMs,
       rigId: this.cfg.rigId,
       topics: this.cfg.topics,
       rig: this.rigStatus,
@@ -170,20 +147,13 @@ this.client.on('reconnect', () => {
     this.resetDeadlines.delete(actuator);
   }
 
- subscribeToStatus() {
-  console.log('[Playground MQTT] subscribing:', this.cfg.topics.status);
+  subscribeToStatus() {
+    this.client.subscribe(this.cfg.topics.status, { qos: 1 }, (err) => {
+      if (err) console.error('[Playground MQTT] status subscribe failed:', err.message);
+    });
+  }
 
-  this.client.subscribe(this.cfg.topics.status, { qos: 1 }, (err, granted) => {
-    if (err) {
-      console.error('[Playground MQTT] status subscribe failed:', err);
-      return;
-    }
-
-    console.log('[Playground MQTT] subscription successful:', granted);
-  });
-}
-
-  onMessage(topic, payload) {
+  onMessage(topic, payload, packet) {
     if (topic !== this.cfg.topics.status) return;
     try {
       const parsed = JSON.parse(payload.toString('utf8'));
@@ -193,8 +163,12 @@ this.client.on('reconnect', () => {
         online: p.online === true,
         rig: typeof p.rig === 'string' ? p.rig : undefined,
         uptime_ms: typeof p.uptime_ms === 'number' ? p.uptime_ms : undefined,
+        rssi: typeof p.rssi === 'number' ? p.rssi : undefined,
+        reconnects: typeof p.reconnects === 'number' ? p.reconnects : undefined,
         actuators: this.parseActuators(p.actuators),
-        receivedAt: Date.now(),
+        // A retained message is replayed by the broker on (re)subscribe and may be arbitrarily old, so it
+        // proves nothing about the rig being alive right now. Treat it as stale until a live heartbeat arrives.
+        receivedAt: packet && packet.retain ? 0 : Date.now(),
       };
     } catch {
       /* malformed status messages are ignored */

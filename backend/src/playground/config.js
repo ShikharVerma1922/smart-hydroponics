@@ -11,6 +11,8 @@ const EnvSchema = z.object({
   PLAYGROUND_TOPIC_PREFIX: z.string().default('hydro/playground'),
   PLAYGROUND_MAX_PULSE_MS: z.coerce.number().int().positive().default(30_000),
   PLAYGROUND_MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  // The rig sends a heartbeat every 10 s; 25 s = two missed heartbeats plus margin before it is shown offline.
+  PLAYGROUND_RIG_STALE_MS: z.coerce.number().int().positive().default(25_000),
   ML_SERVICE_URL: z.string().url().default('http://localhost:8000/predict'),
   ML_FILE_FIELD: z.string().min(1).default('file'),
   ML_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
@@ -24,6 +26,7 @@ const EnvSchema = z.object({
  * @property {string} rigId
  * @property {number} maxPulseMs
  * @property {number} maxImageBytes
+ * @property {number} rigStaleMs - the rig is reported offline when no heartbeat arrived for this long
  * @property {{ url: string; fileField: string; timeoutMs: number }} ml
  * @property {{ command: string; status: string }} topics
  */
@@ -49,6 +52,7 @@ export function loadPlaygroundConfig(env = process.env) {
     rigId: e.PLAYGROUND_RIG_ID,
     maxPulseMs: e.PLAYGROUND_MAX_PULSE_MS,
     maxImageBytes: e.PLAYGROUND_MAX_IMAGE_BYTES,
+    rigStaleMs: e.PLAYGROUND_RIG_STALE_MS,
     ml: { url: e.ML_SERVICE_URL, fileField: e.ML_FILE_FIELD, timeoutMs: e.ML_TIMEOUT_MS },
     topics: { command: `${base}/cmd`, status: `${base}/status` },
   };

@@ -40,6 +40,8 @@ export const MIN_PULSE_MS = 100;
  * @property {boolean} online
  * @property {string} [rig]
  * @property {number} [uptime_ms]
+ * @property {number} [rssi] - rig WiFi signal strength in dBm
+ * @property {number} [reconnects] - MQTT reconnects since the rig booted
  * @property {Partial<Record<ActuatorId, boolean>>} actuators
  * @property {number} receivedAt
  */
@@ -50,6 +52,7 @@ export const MIN_PULSE_MS = 100;
  * @property {string} commandId
  * @property {string} topic
  * @property {number | null} autoResetInMs
+ * @property {boolean} rigOnline - the rig was reporting online when the command was published
  */
 
 /**
