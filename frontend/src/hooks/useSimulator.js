@@ -6,7 +6,8 @@ import { DEFAULT_ENGINE_CONFIG, evaluate } from '@/lib/playground/decisionEngine
 
 const TICK_MS = 250;
 const EVAL_INTERVAL_MS = 1000;
-const STATUS_POLL_MS = 4000;
+/** How often the browser re-checks whether the rig is online (matches the rig's 10 s heartbeat). */
+const STATUS_POLL_MS = 10_000;
 const MAX_EVENTS = 60;
 /** Production uses 24 h; the playground keeps the same value so the cooldown is visible but not editable. */
 const REPORT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -64,6 +65,8 @@ export function useSimulator() {
   const hardwareRef = useRef(hardwareSync);
   const circulationRef = useRef(circulationOn);
   const lockoutRef = useRef(0);
+  const prevRigOnlineRef = useRef(null);
+  const lastOfflineWarnRef = useRef(0);
   const pulsesRef = useRef([]);
   const lastSignatureRef = useRef('');
   const eventSeq = useRef(0);
@@ -76,14 +79,51 @@ export function useSimulator() {
     setEvents((prev) => [{ id, at: Date.now(), level, message }, ...prev].slice(0, MAX_EVENTS));
   }, []);
 
+  /**
+   * Confirms a timed pulse really reached the rig: polls the rig's own status (it reports every actuator
+   * change immediately) and logs how long it took, or warns if the rig never reported the actuator ON.
+   */
+  const confirmPulse = useCallback(
+    async (actuator, durationMs, sentAt) => {
+      const checks = [250, 600, 1000].filter((ms) => ms < durationMs - 100);
+      let waited = 0;
+      for (const at of checks) {
+        await new Promise((resolve) => setTimeout(resolve, at - waited));
+        waited = at;
+        try {
+          const status = await playgroundApi.status();
+          if (status.rig?.actuators?.[actuator] === true) {
+            log('info', `Rig confirmed ${actuator} ON (~${Date.now() - sentAt} ms after the command was sent)`);
+            return;
+          }
+        } catch {
+          /* an unreachable status endpoint is reported by the poll */
+        }
+      }
+      if (checks.length > 0) {
+        log('warn', `Rig did NOT confirm ${actuator} ON within ${waited} ms. Check the rig's Serial Monitor ([CMD] lines) and the Rig LEDs.`);
+      }
+    },
+    [log],
+  );
+
   const syncActuator = useCallback(
     (cmd) => {
       if (!hardwareRef.current) return;
+      const sentAt = Date.now();
       playgroundApi
         .sendActuator(cmd)
+        .then((receipt) => {
+          // "ok" only means the BROKER accepted the command, not that the rig received it.
+          if (receipt.rigOnline === false && Date.now() - lastOfflineWarnRef.current > 15_000) {
+            lastOfflineWarnRef.current = Date.now();
+            log('warn', 'Command published, but the rig is not reporting online. It may not receive it.');
+          }
+          if (cmd.state === 'ON' && cmd.durationMs) void confirmPulse(cmd.actuator, cmd.durationMs, sentAt);
+        })
         .catch((err) => log('error', `Hardware sync failed: ${describeError(err)}`));
     },
-    [log],
+    [log, confirmPulse],
   );
 
   const hardwareStopAll = useCallback(() => {
@@ -222,13 +262,25 @@ export function useSimulator() {
   useEffect(() => {
     if (!hardwareSync) {
       setBridge(null);
+      prevRigOnlineRef.current = null;
       return;
     }
     let cancelled = false;
     const poll = async () => {
       try {
         const status = await playgroundApi.status();
-        if (!cancelled) setBridge(status);
+        if (cancelled) return;
+        setBridge(status);
+
+        const was = prevRigOnlineRef.current;
+        prevRigOnlineRef.current = status.rigOnline;
+        if (was === true && !status.rigOnline) {
+          log('warn', 'Rig went offline');
+        } else if (was === false && status.rigOnline) {
+          // The rig stops every actuator when it loses MQTT (failsafe), so re-send the pump state it missed.
+          log('info', 'Rig back online: re-sending the circulation pump state');
+          syncActuator({ actuator: 'CIRCULATION_PUMP', state: circulationRef.current ? 'ON' : 'OFF' });
+        }
       } catch {
         if (!cancelled) setBridge(null);
       }
@@ -239,7 +291,7 @@ export function useSimulator() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [hardwareSync]);
+  }, [hardwareSync, log, syncActuator]);
 
   /* ---------- user actions ---------- */
 

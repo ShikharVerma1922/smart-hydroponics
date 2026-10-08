@@ -16,6 +16,11 @@ export default function PlaygroundPage() {
     <main className="min-h-screen bg-slate-950 p-4 text-slate-100 lg:p-6">
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">Hydroponics Playground</h1>
+        {/* <p className="mt-1 max-w-3xl text-sm text-slate-400">
+          Isolated simulation harness: nothing here reads or writes the database. Hardware sync publishes only to the
+          <code className="mx-1 rounded bg-slate-800 px-1.5 py-0.5 text-xs">hydro/playground/*</code>
+          topics, which production devices never subscribe to.
+        </p> */}
         {sim.report ? (
           <p className="mt-2 inline-flex items-center gap-2 rounded-md bg-violet-500/10 px-3 py-1 text-xs text-violet-200">
             Active ML report: {sim.report.label.replace(/_/g, ' ')} ({sim.report.severity},{' '}

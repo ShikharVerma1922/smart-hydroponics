@@ -24,7 +24,7 @@ const BOTTLES = [
 ];
 
 const TANK = { x: 320, y: 180, w: 280, h: 190 };
-const PUMP = { cx: 110, cy: 300+35, r: 34 };
+const PUMP = { cx: 110, cy: 300 + 35, r: 34 };
 
 function waterColor(ph) {
   if (ph < 5.5) return '#f59e0b';
@@ -164,7 +164,7 @@ export function DigitalTwin({
         </text>
 
         {/* ---- circulation loop ---- */}
-        <FlowPipe d={`M ${TANK.x} 335 H ${PUMP.cx + PUMP.r}`} color={COLORS.CIRCULATION_PUMP} active={circ.on} />
+        <FlowPipe d={`M ${TANK.x} 335 H ${PUMP.cx + PUMP.r + 4}`} color={COLORS.CIRCULATION_PUMP} active={circ.on} />
         <FlowPipe
           d={`M ${PUMP.cx} ${PUMP.cy - PUMP.r - 2} V 150 H ${TANK.x + 20} V ${TANK.y + 40}`}
           color={COLORS.CIRCULATION_PUMP}
