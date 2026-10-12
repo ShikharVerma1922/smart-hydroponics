@@ -1,7 +1,16 @@
-#!/bin/bash
+cleanup() {
+    echo ""
+    echo "Shutting down services..."
 
-# Stop everything when Ctrl+C is pressed
-trap 'kill 0' EXIT
+    kill 0
+
+    docker compose down
+
+    echo "All services stopped."
+    exit 0
+}
+
+trap cleanup INT TERM
 
 echo "Starting infrastructure..."
 docker compose up -d
@@ -15,7 +24,7 @@ echo "Starting Node.js backend..."
 echo "Starting ML service..."
 (
   cd ml-service
-  uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+  ./.venv/bin/uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ) &
 
 echo "Starting Next.js frontend..."
