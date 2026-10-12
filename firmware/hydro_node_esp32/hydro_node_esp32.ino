@@ -1,37 +1,26 @@
-// Hydroponic node: WiFi pairing portal, MQTT telemetry/commands, and real pump outputs.
-// Runs on ESP32 or ESP8266 (the board is detected automatically).
+// Hydroponic node for ESP32: WiFi pairing portal, MQTT telemetry/commands, and real pump outputs.
 //
 // Libraries (Library Manager): WiFiManager by tzapu (2.0.x), PubSubClient 2.8+, ArduinoJson 7.x
-// Board package: "esp32" by Espressif, or "esp8266" by ESP8266 Community
-// ESP8266 only: Tools > Flash Size must include a filesystem, e.g. "4MB (FS:2MB OTA:~1MB)"
+// Board package: "esp32" by Espressif. Select a board such as "ESP32 Dev Module".
 //
 // ----------------------------------------------------------------------------------------------
 // PIN CONFIGURATION (change the numbers in the "Pin configuration" block below if you wire differently)
 //
-//   Function            ESP8266 (NodeMCU / D1 mini)    ESP32 (DevKit)     Notes
-//   ------------------  -----------------------------  -----------------  -------------------------------
-//   Circulation pump    GPIO5  (D1)                    GPIO25             latched ON/OFF, no timeout
-//   pH Down pump        GPIO4  (D2)                    GPIO26             timed pulse
-//   Nutrient A pump     GPIO14 (D5)                    GPIO27             timed pulse
-//   Nutrient B pump     GPIO12 (D6)                    GPIO33             timed pulse
-//   Re-pair button      GPIO0  (FLASH, D3)             GPIO0 (BOOT)       hold 5 s while running
-//   Status LED          GPIO2  (D4, active LOW)        GPIO2 (active HIGH) built in
+//   Function            ESP32 pin   Notes
+//   ------------------  ----------  --------------------------------------------
+//   Circulation pump    GPIO25      latched ON/OFF, no timeout
+//   pH Down pump        GPIO26      timed pulse
+//   Nutrient A pump     GPIO27      timed pulse
+//   Nutrient B pump     GPIO33      timed pulse
+//   Re-pair button      GPIO0       the BOOT button; hold 5 s while running
+//   Status LED          GPIO2       built-in LED, active HIGH
 //
 //   Every pump output drives a relay module or MOSFET board, never a pump directly. Give the pumps their own
-//   supply and tie its ground to the board's ground. These pins are safe at boot (no strapping pins).
-//   Sensors are simulated in this sketch, so no sensor pins are used.
+//   supply and tie its ground to the ESP32's ground. These pins are not boot-strapping pins, so they stay
+//   quiet at startup. Sensors are simulated in this sketch, so no sensor pins are used.
 // ----------------------------------------------------------------------------------------------
 
-#if defined(ARDUINO_ARCH_ESP32)
-  #include <WiFi.h>
-  #define BOARD_NAME "ESP32"
-#elif defined(ARDUINO_ARCH_ESP8266)
-  #include <ESP8266WiFi.h>
-  #define BOARD_NAME "ESP8266"
-#else
-  #error "This sketch supports ESP32 and ESP8266 boards only"
-#endif
-
+#include <WiFi.h>
 #include <WiFiManager.h>
 #include <LittleFS.h>
 #include <PubSubClient.h>
@@ -43,23 +32,14 @@
   #define LED_BUILTIN 2
 #endif
 
-#if defined(ARDUINO_ARCH_ESP32)
-  const uint8_t PIN_CIRCULATION = 25;
-  const uint8_t PIN_PH_DOWN     = 26;
-  const uint8_t PIN_NUTRIENT_A  = 27;
-  const uint8_t PIN_NUTRIENT_B  = 33;
-  const uint8_t BUTTON_PIN      = 0;     // BOOT button
-  #define STATUS_LED_ON_LEVEL  HIGH      // ESP32 built-in LED is active HIGH
-  #define STATUS_LED_OFF_LEVEL LOW
-#else
-  const uint8_t PIN_CIRCULATION = 5;     // D1
-  const uint8_t PIN_PH_DOWN     = 4;     // D2
-  const uint8_t PIN_NUTRIENT_A  = 14;    // D5
-  const uint8_t PIN_NUTRIENT_B  = 12;    // D6
-  const uint8_t BUTTON_PIN      = 0;     // FLASH button (D3)
-  #define STATUS_LED_ON_LEVEL  LOW       // ESP8266 built-in LED is active LOW
-  #define STATUS_LED_OFF_LEVEL HIGH
-#endif
+const uint8_t PIN_CIRCULATION = 25;
+const uint8_t PIN_PH_DOWN     = 26;
+const uint8_t PIN_NUTRIENT_A  = 27;
+const uint8_t PIN_NUTRIENT_B  = 33;
+const uint8_t BUTTON_PIN      = 0;     // BOOT button
+
+#define STATUS_LED_ON_LEVEL  HIGH      // the ESP32 built-in LED is active HIGH
+#define STATUS_LED_OFF_LEVEL LOW
 
 // Relay polarity. 1 = the relay/driver switches ON when the pin is LOW (the common "low level trigger" 4-channel
 // relay boards). 0 = ON when the pin is HIGH (MOSFET modules, "high level trigger" relays).
@@ -128,11 +108,7 @@ unsigned long wifiLostSince   = 0;
 
 // ===================== Board helpers =====================
 String chipIdHex() {
-#if defined(ARDUINO_ARCH_ESP32)
   return String((uint32_t)(ESP.getEfuseMac() >> 24), HEX);   // last 3 MAC bytes: unique per board
-#else
-  return String(ESP.getChipId(), HEX);
-#endif
 }
 
 // ===================== Status LED =====================
@@ -535,20 +511,15 @@ void setup() {
 
   Serial.begin(115200);
   delay(200);
-  Serial.printf("\n[BOOT] Hydroponic node (%s, WiFiManager)\n", BOARD_NAME);
+  Serial.println("\n[BOOT] Hydroponic node (ESP32, WiFiManager)");
   printPinConfig();
 
   pinMode(LED_BUILTIN, OUTPUT);
   ledOn();                          // no WiFi yet, so solid on until connected
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-#if defined(ARDUINO_ARCH_ESP32)
   randomSeed(esp_random());
-  if (!LittleFS.begin(true)) Serial.println("[CFG] LittleFS mount failed");
-#else
-  randomSeed(analogRead(A0));
-  if (!LittleFS.begin()) Serial.println("[CFG] LittleFS mount failed (check Flash Size setting)");
-#endif
+  if (!LittleFS.begin(true)) Serial.println("[CFG] LittleFS mount failed");   // true = format on first use
   loadConfig();
 
   // Telemetry topic is an ASSUMPTION: copy the value from your original sketch if it differs.
