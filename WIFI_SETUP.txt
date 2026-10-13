@@ -1,0 +1,62 @@
+================================================================================
+   ESP32 HYDROPONICS NODE - WI-FI & MQTT SETUP GUIDE
+================================================================================
+
+1. POWER ON THE ESP32
+--------------------------------------------------------------------------------
+- Connect the ESP32 to a 5V power supply or USB port.
+- On first boot (or if it cannot find saved Wi-Fi within 20 seconds), the 
+  built-in status LED (GPIO 2) stays SOLID ON.
+- This indicates the pairing access point is active.
+
+
+2. CONNECT TO THE SETUP HOTSPOT
+--------------------------------------------------------------------------------
+- On your phone or PC, open your Wi-Fi settings.
+- Connect to the broadcasted network:
+    SSID:     Hydro-Setup
+    Password: hydro1234
+
+
+3. OPEN THE CONFIGURATION PORTAL
+--------------------------------------------------------------------------------
+- Most devices will display a "Sign in to network" pop-up automatically.
+- If it doesn't open automatically:
+    1. Open any web browser (Chrome, Safari, Firefox).
+    2. Go to: http://192.168.4.1
+    3. Click/Tap "Configure WiFi".
+
+
+4. CONFIGURE WI-FI & MQTT BROKER
+--------------------------------------------------------------------------------
+- Select your home/local 2.4 GHz Wi-Fi network from the scanned list.
+- Enter your Wi-Fi Password.
+- Configure your MQTT Broker parameters:
+    * MQTT broker host / IP : LAN IP of your broker (e.g., 192.168.1.105)
+                              Do NOT use "localhost" or "127.0.0.1".
+    * MQTT port             : 1883
+    * Username / Password   : (Optional) Enter credentials if enabled, 
+                              otherwise leave blank.
+
+
+5. SAVE & VERIFY CONNECTION
+--------------------------------------------------------------------------------
+- Tap "Save".
+- The ESP32 will write the parameters to flash (LittleFS & NVS) and reboot.
+- Once connected:
+    * The status LED will turn OFF.
+    * The LED will briefly flash every 10 seconds whenever telemetry publishes.
+- In the Arduino Serial Monitor (115200 baud), verify:
+    [WiFi] Connected to '<Your_SSID>', IP 192.168.x.x
+    [MQTT] Connected and subscribed
+
+
+================================================================================
+   RE-ENTERING SETUP / RE-PAIRING LATER
+================================================================================
+- If you change your Wi-Fi router or MQTT IP:
+    1. Keep the ESP32 powered on.
+    2. Press and hold the onboard "BOOT" button (GPIO 0) for 5 seconds.
+    3. All dosing pumps will shut off for safety, and the "Hydro-Setup" 
+       hotspot will reopen for 3 minutes.
+================================================================================
