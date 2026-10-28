@@ -20,10 +20,10 @@
 // ===================== Configuration =====================
 const char*    WIFI_SSID    = "Realme S";
 const char*    WIFI_PASS    = "1234567891";
-const char*    MQTT_HOST    = "10.99.25.52";  // LAN IP of the broker (NOT localhost)
+const char*    MQTT_HOST    = "10.120.254.52";  // LAN IP of the broker (NOT localhost)
 const uint16_t MQTT_PORT    = 1883;
 const char*    MQTT_USER    = "";                // leave empty if the broker has no auth
-const char*    MQTT_PASS    = "";
+const char*    MQTT_PASS    = ""; 
 
 const char*    RIG_ID       = "rig01";           // must match PLAYGROUND_RIG_ID on the backend
 const char*    TOPIC_PREFIX = "hydro/playground";// must match PLAYGROUND_TOPIC_PREFIX
