@@ -405,7 +405,7 @@ input:focus, select:focus {
 /* ── Gauge Cards Grid ── */
 .gauge-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1.25rem;
 }
 
@@ -1054,6 +1054,7 @@ input:focus, select:focus {
   background: var(--accent-amber-dim);
   color: var(--accent-amber);
 }
+
 
 /* ── Probability Bars ── */
 .prob-bar {

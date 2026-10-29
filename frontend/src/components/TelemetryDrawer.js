@@ -271,7 +271,7 @@ const getSensors = (row) => row?.sensors || row || {};
                     {/* Circulation pump */}
                     <td>
                       <span
-                        className="badge badge--detection"
+                        className={`badge ${row.circulation_pump_state == 'ON'?"badge--detection" : "badge--manual"}`}
                         style={{
                           fontSize: '0.625rem',
                         }}

@@ -21,7 +21,7 @@ export function EventLog({ events }) {
       {events.length === 0 ? (
         <p className="text-xs text-slate-500">No events yet. Move a slider or trigger a scenario.</p>
       ) : (
-        <ul className="max-h-64 space-y-1 overflow-y-auto pr-1 font-mono text-xs">
+        <ul className="max-h-140 space-y-1 overflow-y-auto pr-1 font-mono text-xs">
           {events.map((e) => (
             <li key={e.id} className={LEVEL_STYLES[e.level]}>
               <span className="mr-2 text-slate-500">{formatClock(e.at)}</span>

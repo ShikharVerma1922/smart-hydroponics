@@ -21,7 +21,8 @@ export default function PumpControls({ deviceId, lockout }) {
   const [circLoading, setCircLoading] = useState(true);
   const [circUpdatedAt, setCircUpdatedAt] = useState(null);
 
-  const isLocked = Boolean(lockout?.isActive);
+  // const isLocked = Boolean(lockout?.isActive);
+  const isLocked = false;
 
   // Load the actual persisted circulation state from backend
   useEffect(() => {

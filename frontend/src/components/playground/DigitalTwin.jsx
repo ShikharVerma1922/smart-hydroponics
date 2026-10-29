@@ -5,9 +5,9 @@ import { ACTUATOR_LABELS } from '@/lib/playground/types';
 
 const COLORS = {
   CIRCULATION_PUMP: '#38bdf8',
-  PH_DOWN: '#f472b6',
+  PH_DOWN: '#FF1000',
   NUTRIENT_A: '#fbbf24',
-  NUTRIENT_B: '#a78bfa',
+  NUTRIENT_B: '#B9FF66',
 };
 
 /**

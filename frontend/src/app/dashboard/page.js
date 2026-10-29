@@ -298,7 +298,7 @@ export default function Dashboard() {
           </div>
 
           {/* Ambient Climate */}
-          {/* <div className="card gauge-card climate-card" id="gauge-climate">
+          <div className="card gauge-card climate-card" id="gauge-climate">
             <div className="gauge-card__header">
               <span className="gauge-card__label">Ambient Climate</span>
             </div>
@@ -323,10 +323,10 @@ export default function Dashboard() {
               <Sparkline data={humidityHistory} width={60} height={24} color="var(--accent-green)" />
             </div>
             <div className="gauge-card__range">
-              <span>2 hr</span>
-              <span>2 h</span>
+              {/* <span>2 hr</span>
+              <span>2 h</span> */}
             </div>
-          </div> */}
+          </div> 
         </div>
 
         {/* ── Time-Series Chart ── */}

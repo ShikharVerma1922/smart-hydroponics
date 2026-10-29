@@ -220,7 +220,7 @@ export function WaterGauge({ percentage = 0, waterTemp }) {
               animation: 'pulse-dot 2s infinite',
             }} />
             <span style={{ fontSize: '1.125rem', fontWeight: 800, color: tempColor, letterSpacing: '-0.02em' }}>
-              {waterTemp.toFixed(1)}°C
+              {waterTemp?.toFixed(1)}°C
             </span>
           </div>
           <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 500 }}>
