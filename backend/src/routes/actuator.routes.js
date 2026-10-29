@@ -7,7 +7,7 @@ import { emitCirculationUpdate, emitDosingEvent, emitSystemLockout } from '../so
 const router = express.Router();
 
 // Reference to in-memory mixing lockouts or query latest DosingLog
-const POST_DOSING_LOCKOUT_MS = 10 * 60 * 1000;
+const POST_DOSING_LOCKOUT_MS = 10 * 60 * 1000 * 0;
 
 /**
  * POST /api/actuators/manual-pulse
@@ -112,6 +112,8 @@ router.post('/manual-pulse', async (req, res) => {
 router.post('/circulation', async (req, res) => {
   const { deviceId = 'esp32_node_01', mode = 'CONTINUOUS', runMin = 15, restMin = 15 } = req.body;
 
+  // console.log(mode)
+
   const validModes = ['CONTINUOUS', 'INTERVAL', 'OFF'];
   if (!validModes.includes(mode)) {
     return res.status(400).json({
@@ -160,6 +162,7 @@ router.post('/circulation', async (req, res) => {
         resolve();
       });
     });
+    console.log(mode)
 
     console.log(`[Actuator MQTT] [\({deviceId}] Set circulation ->\){mode}`);
 

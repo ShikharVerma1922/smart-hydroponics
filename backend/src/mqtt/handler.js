@@ -23,6 +23,7 @@ export const initMQTTHandler = ()=>{
         try {
             if(topic.endsWith('/telemetry')){
                 const data = JSON.parse(message.toString());
+                // console.log(data)
                const rawSensors = data.sensors || data;
                await recordHeartbeat(data.device_id);
 
